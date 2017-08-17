@@ -4,6 +4,7 @@ from creamas.math import gaus_pdf
 import logging
 import aiomas
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 class FeatureAgent(RuleAgent):
@@ -357,3 +358,4 @@ class MultiAgent(FeatureAgent):
                     best_addr = addr
 
             return best_addr
+
