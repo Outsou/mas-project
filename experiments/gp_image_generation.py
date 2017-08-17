@@ -1,3 +1,5 @@
+'''Testing genetic image generation with one agent. Images from agent's memory are saved at the end of the run.'''
+
 from artifacts import GeneticImageArtifact
 from utils.util import create_toolbox, create_pset, create_environment, get_image_rules
 
@@ -61,7 +63,7 @@ if __name__ == "__main__":
         print(ret)
 
     sim = Simulation(menv, log_folder=log_folder)
-    sim.async_steps(100)
+    sim.async_steps(10)
     menv.save_artifacts(save_folder)
     sim.end()
 

@@ -16,6 +16,7 @@ import operator
 
 
 def create_environment(num_of_slaves):
+    '''Creates a StatEnvironment with slaves.'''
     addr = ('localhost', 5550)
 
     addrs = []
@@ -50,6 +51,8 @@ def create_environment(num_of_slaves):
 
 
 def get_image_rules(img_shape):
+    '''Creates a dictionary of RuleLeafs for images.'''
+
     rules = {}
     red_rule = RuleLeaf(ft.ImageRednessFeature(), LinearMapper(0, 1, '01'))
     rules['red'] = red_rule
@@ -65,6 +68,7 @@ def get_image_rules(img_shape):
 
 
 def create_pset():
+    '''Creates a set of primitives for deap.'''
     pset = gp.PrimitiveSetTyped("main", [float, float], list)
     pset.addPrimitive(combine, [float, float, float], list)
     pset.addPrimitive(operator.mul, [float, float], float)
@@ -93,6 +97,7 @@ def create_pset():
     return pset
 
 def mutate(individual, pset, expr):
+    '''Choose a random mutation function from deap. Used with deap's toolbox.'''
     rand = np.random.rand()
     if rand <= 0.25:
         return gp.mutShrink(individual),
@@ -104,6 +109,7 @@ def mutate(individual, pset, expr):
 
 
 def create_toolbox(pset):
+    '''Creates a deap toolbox for genetic programming with deap.'''
     toolbox = base.Toolbox()
     toolbox.register("expr", gp.genHalfAndHalf, pset=pset, min_=2, max_=3)
     toolbox.register("mate", gp.cxOnePoint)

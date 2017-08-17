@@ -7,6 +7,8 @@ import aiomas
 
 
 class StatEnvironment(MultiEnvironment):
+    '''A MultiEnvironment that can collect stats from agents.'''
+
     def get_connection_counts(self):
         return self.get_dictionary('get_connection_counts')
 
@@ -26,6 +28,15 @@ class StatEnvironment(MultiEnvironment):
         return self.get_dictionary('get_total_reward')
 
     def get_dictionary(self, func_name):
+        '''
+        Creates a dictionary with agents as the keys
+        and the return values of a function as the values.
+
+        :param func_name:
+            The name of the function that will be called for each agent.
+        :return:
+            A dictionary.
+        '''
         agents = self.get_agents(addr=False)
 
         dict = {}
@@ -38,7 +49,14 @@ class StatEnvironment(MultiEnvironment):
         return dict
 
     def save_artifacts(self, folder):
+        '''
+        Asks each agent to save their artifacts.
+
+        :param folder:
+            The folder where the artifacts are saved.
+        '''
         def agent_name_parse(name):
+            '''Converts the name of an agent into a file path friendly format.'''
             parsed_name = name.replace('://', '_')
             parsed_name = parsed_name.replace(':', '_')
             parsed_name = parsed_name.replace('/', '_')

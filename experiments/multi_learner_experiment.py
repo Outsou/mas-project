@@ -1,3 +1,6 @@
+'''Tests a single agent modeling multiple connected agents.
+Test is run simultaneously for several different learning methods.'''
+
 from utils.util import create_environment
 from artifacts  import DummyArtifact
 from features import DummyFeature
