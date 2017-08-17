@@ -1,0 +1,2 @@
+deap==1.0.2.post2
+networkx==1.11
