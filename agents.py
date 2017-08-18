@@ -189,8 +189,9 @@ class MultiAgent(FeatureAgent):
         '''
         super().__init__(environment, *args, **kwargs)
         self.std = std
-        self.sgd_reward = 0     # reward with stochastic gradient descent
+        self.sgd_reward = 0     # reward with non-linear stochastic gradient descent
         self.bandit_reward = 0  # reward with q-learning
+        self.linear_reward = 0  # reward with linear regression
         self.random_reward = 0  # expected random reward
         self.max_reward = 0     # maximum possible reward
         self.active = active
@@ -235,7 +236,7 @@ class MultiAgent(FeatureAgent):
             opinions[addr] = opinion
             self.connection_totals[addr] += opinion
 
-        # Stochastic gradient descent selection and update
+        # Non-linear stochastic gradient descent selection and update
         sgd_chosen_addr = self.learner.sgd_choose(features)
         self.sgd_reward += opinions[sgd_chosen_addr]
         self.learner.update_sgd(opinions[sgd_chosen_addr], sgd_chosen_addr, features)
@@ -244,6 +245,11 @@ class MultiAgent(FeatureAgent):
         bandit_chosen_addr = self.learner.bandit_choose()
         self.bandit_reward += opinions[bandit_chosen_addr]
         self.learner.update_bandit(opinions[bandit_chosen_addr], bandit_chosen_addr)
+
+        # Linear regression selection and update
+        linear_chosen_addr = self.learner.linear_choose(features)
+        self.linear_reward += opinions[linear_chosen_addr]
+        self.learner.update_linear_regression(opinions[linear_chosen_addr], linear_chosen_addr, features)
 
         # Update expected random reward and max reward
         self.random_reward += np.sum(list(opinions.values())) / len(opinions)
@@ -255,14 +261,19 @@ class MultiAgent(FeatureAgent):
             return
 
         # Log stats about the run
-        self._log(logging.INFO, 'SGD reward: ' + str(self.sgd_reward))
-        self._log(logging.INFO, 'Bandit reward: ' + str(self.bandit_reward))
-        self._log(logging.INFO, 'Max reward: ' + str(self.max_reward))
-        self._log(logging.INFO, 'Expected random reward: ' + str(self.random_reward))
+        self._log(logging.INFO, 'Linear regression reward: {} ({}%)'
+                  .format(int(np.around(self.linear_reward)), int(np.around(self.linear_reward / self.max_reward, 2) * 100)))
+        self._log(logging.INFO, 'Non-linear SGD reward: {} ({}%)'
+                  .format(int(np.around(self.sgd_reward)), int(np.around(self.sgd_reward / self.max_reward, 2) * 100)))
+        self._log(logging.INFO, 'Bandit reward: {} ({}%)'
+                  .format(int(np.around(self.bandit_reward)), int(np.around(self.bandit_reward / self.max_reward, 2) * 100)))
+        self._log(logging.INFO, 'Max reward: ' + str(int(np.around(self.max_reward))))
+        self._log(logging.INFO, 'Expected random reward: {} ({}%)'
+                  .format(int(np.around(self.random_reward)), int(np.around(self.random_reward / self.max_reward, 2) * 100)))
         self._log(logging.INFO, 'Connection totals:')
         for addr, total in self.connection_totals.items():
-            self._log(logging.INFO, '{}: {}'.format(addr, total))
-        self._log(logging.INFO, 'Bandit perceived as best: ' + str(self.learner.bandit_choose(e=0)))
+            self._log(logging.INFO, '{}: {}'.format(addr, int(np.around(total))))
+        self._log(logging.INFO, 'Bandit perceived as best: ' + max(self.learner.bandits, key=self.learner.bandits.get))
 
 
     class MultiLearner():
@@ -270,7 +281,7 @@ class MultiAgent(FeatureAgent):
         Currently implemented:
         stochastic gradient descent (SGD),
         Q-learning for n-armed bandit problem'''
-        def __init__(self, addrs, num_of_features, std, centroid_rate=200, weight_rate=0.2):
+        def __init__(self, addrs, num_of_features, std, centroid_rate=200, weight_rate=0.2, e=0.2):
             '''
             :param addrs:
                 Addresses of the agents that are modeled.
@@ -287,14 +298,18 @@ class MultiAgent(FeatureAgent):
             self.weight_rate = weight_rate
             self.num_of_features = num_of_features
             self.std = std
+            self.e = e
 
+            self.linear_weights = {}
             self.sgd_weights = {}
             self.centroids = {}
             self.bandits = {}
             for addr in addrs:
-                self.sgd_weights[addr] = np.array([0.5] * num_of_features)
-                self.centroids[addr] = np.array([0.5] * num_of_features)
-                self.bandits[addr] = 10
+                init_vals = [0.5] * num_of_features
+                self.linear_weights[addr] = np.append(init_vals, init_vals[0])
+                self.sgd_weights[addr] = np.array(init_vals)
+                self.centroids[addr] = np.array(init_vals)
+                self.bandits[addr] = 1
 
             self.max = gaus_pdf(1, 1, std)
 
@@ -307,7 +322,7 @@ class MultiAgent(FeatureAgent):
             estimate = np.sum(self.sgd_weights[addr] * vals)
             return estimate, vals
 
-        def update_bandit(self, true_value, addr, discount_factor = 0.95, learning_factor=0.9):
+        def update_bandit(self, true_value, addr, discount_factor = 0, learning_factor=0.9):
             '''
             Updates the Q-value for addr.
 
@@ -351,7 +366,13 @@ class MultiAgent(FeatureAgent):
             self.centroids[addr] += self.centroid_rate * gradient * error
             self.centroids[addr] = np.clip(self.centroids[addr], 0, 1)
 
-        def sgd_choose(self, features, e=0.2):
+        def update_linear_regression(self, true_value, addr, features):
+            feature_vec = np.append(features, 1)
+            error = true_value - self.linear_weights[addr] * feature_vec
+            gradient = feature_vec * error
+            self.linear_weights[addr] += self.weight_rate * gradient
+
+        def sgd_choose(self, features):
             '''
             Choose a connection with the SGD model.
 
@@ -362,7 +383,7 @@ class MultiAgent(FeatureAgent):
             :return:
                 The chosen connection's address.
             '''
-            if np.random.rand() < e:
+            if np.random.rand() < self.e:
                 return np.random.choice(list(self.sgd_weights.keys()))
 
             best_estimate = -1
@@ -376,7 +397,7 @@ class MultiAgent(FeatureAgent):
 
             return best_addr
 
-        def bandit_choose(self, e=0.2):
+        def bandit_choose(self):
             '''
             Choose a connection with the Q-learning model.
 
@@ -387,7 +408,7 @@ class MultiAgent(FeatureAgent):
             :return:
                 The chosen connection's address.
             '''
-            if np.random.rand() < e:
+            if np.random.rand() < self.e:
                 return np.random.choice(list(self.bandits.keys()))
 
             best = -np.inf
@@ -400,3 +421,18 @@ class MultiAgent(FeatureAgent):
 
             return best_addr
 
+        def linear_choose(self, features):
+            if np.random.random() < self.e:
+                return np.random.choice(list(self.linear_weights.keys()))
+
+            best_estimate = -1
+            best_addr = None
+            feature_vec = np.append(features, 1)
+
+            for addr in self.linear_weights.keys():
+                estimate = np.sum(self.linear_weights[addr] * feature_vec)
+                if estimate > best_estimate:
+                    best_estimate = estimate
+                    best_addr = addr
+
+            return best_addr

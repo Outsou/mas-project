@@ -20,7 +20,7 @@ if __name__ == "__main__":
     num_of_agents = 6
     num_of_features = 3
     std = 0.2
-    search_width = 1
+    search_width = 10
 
     create_kwargs = {'length': num_of_features}
 
@@ -66,5 +66,5 @@ if __name__ == "__main__":
     cnx.connections_from_graph(menv, G)
 
     sim = Simulation(menv, log_folder=log_folder)
-    sim.async_steps(200)
+    sim.async_steps(100)
     sim.end()
