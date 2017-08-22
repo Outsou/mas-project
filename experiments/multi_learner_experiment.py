@@ -18,7 +18,7 @@ import pickle
 import os
 import matplotlib.pyplot as plt
 import shutil
-from collections import Counter
+import time
 
 
 def calculate_averages(folder):
@@ -53,14 +53,15 @@ def calculate_averages(folder):
     return avg_stats
 
 
-def create_graphs(folder, window_size):
-    def create_graph(sgd, bandit, linear, maximums, ylabel):
+def create_graphs(folder, window_size, title):
+    def create_graph(sgd, bandit, linear, maximums, ylabel, title, random=None):
         x = []
         last_idx = len(sgd) - 1
 
         sgd_sums = []
         bandit_sums = []
         linear_sums = []
+        random_sums = []
 
         i = 0
         while i < last_idx:
@@ -77,18 +78,26 @@ def create_graphs(folder, window_size):
             bandit_sums.append(bandit_reward / maximum)
             linear_sums.append(linear_reward / maximum)
 
+            if random is not None:
+                random_reward = np.sum(random[0:i + window_size])
+                random_sums.append(random_reward / maximum)
+
             i += window_size
 
             x.append(i)
 
         # Draw the graph
+        if random is not None:
+            plt.plot(x, random_sums, label='Random')
 
         plt.plot(x, sgd_sums, label='SGD')
         plt.plot(x, linear_sums, label='linear')
         plt.plot(x, bandit_sums, label='bandit')
         plt.ylabel(ylabel)
         plt.legend()
+        plt.title(title)
         plt.show()
+        plt.close()
 
     avg_stats = calculate_averages(folder)
 
@@ -97,22 +106,27 @@ def create_graphs(folder, window_size):
                  avg_stats['bandit']['rewards'],
                  avg_stats['linear']['rewards'],
                  avg_stats['max_rewards'],
-                 'Reward percentage')
+                 'Reward percentage',
+                 title,
+                 avg_stats['random_rewards'])
 
     # Create optimal choices graph
     create_graph(avg_stats['sgd']['chose_best'],
                  avg_stats['bandit']['chose_best'],
                  avg_stats['linear']['chose_best'],
                  np.ones(len(avg_stats['sgd']['chose_best'])),
-                 'Optimal choices')
+                 'Optimal choices',
+                 title)
 
 
 if __name__ == "__main__":
+    start_time = time.time()
+
     # Parameters
     num_of_agents = 6
     num_of_features = 3
     std = 0.2
-    search_width = 100
+    search_width = 10
 
     num_of_simulations = 100
     num_of_steps = 1000
@@ -126,7 +140,7 @@ if __name__ == "__main__":
 
     for _ in range(num_of_simulations):
 
-        menv = create_environment(num_of_slaves=8)
+        menv = create_environment(num_of_slaves=4)
 
         active = True
 
@@ -170,4 +184,7 @@ if __name__ == "__main__":
         sim.async_steps(num_of_steps)
         sim.end()
 
-    create_graphs(active_folder, 10)
+    print('Run took {}s'.format(int(np.around(time.time() - start_time))))
+    title = 'Connections: {}, features: {}, search width: {}, runs: {}'\
+        .format(num_of_agents - 1, num_of_features, search_width, num_of_simulations)
+    create_graphs(active_folder, 10, title)
