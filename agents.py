@@ -6,6 +6,9 @@ from creamas.math import gaus_pdf
 import logging
 import aiomas
 import numpy as np
+import copy
+import pickle
+import os
 
 
 class FeatureAgent(RuleAgent):
@@ -128,6 +131,10 @@ class FeatureAgent(RuleAgent):
             i += 1
             self.artifact_cls.save_artifact(art, folder, i, art.evals[self.name])
 
+    @aiomas.expose
+    def get_log_folder(self):
+        return self.logger.folder
+
 
     class STMemory:
 
@@ -189,13 +196,16 @@ class MultiAgent(FeatureAgent):
         '''
         super().__init__(environment, *args, **kwargs)
         self.std = std
-        self.sgd_reward = 0     # reward with non-linear stochastic gradient descent
-        self.bandit_reward = 0  # reward with q-learning
-        self.linear_reward = 0  # reward with linear regression
-        self.random_reward = 0  # expected random reward
-        self.max_reward = 0     # maximum possible reward
         self.active = active
-        self.connection_totals = {} # contains max reward from a single connection
+        self.age = 0
+        stat_dict = {'connections': [], 'rewards': [], 'chose_best': []}
+        self.stats = {'sgd': copy.deepcopy(stat_dict),
+                      'bandit': copy.deepcopy(stat_dict),
+                      'linear': copy.deepcopy(stat_dict),
+                      'random_rewards': [],
+                      'max_rewards': [],
+                      'opinions': []}
+        self.learner = None
 
     def get_features(self, artifact):
         '''Return objective values for features without mapping.'''
@@ -211,15 +221,34 @@ class MultiAgent(FeatureAgent):
         # Initialize the multi-model learner
         self.learner = MultiAgent.MultiLearner(list(self.connections), len(self.R), self.std)
 
-        for connection in self.connections.keys():
-            self.connection_totals[connection] = 0
-
         return rets
 
     @aiomas.expose
     async def act(self):
         '''If active, create an artifact and send it to everyone for evaluation.
         Update models based on the evaluation received from the connection chosen by the model.'''
+        def record_stats(key, addr, reward, chose_best):
+            '''
+            Used to record stats at each step.
+
+            :param key:
+                Name of the learning method.
+            :param addr:
+                Address of the connection chosen by the learning method.
+            :param reward:
+                Reward from addr.
+            :param chose_best:
+                True if optimal choice was made, else False.
+            '''
+            self.stats[key]['connections'].append(addr)
+            self.stats[key]['rewards'].append(reward)
+            if chose_best:
+                self.stats[key]['chose_best'].append(1)
+            else:
+                self.stats[key]['chose_best'].append(0)
+
+        self.age += 1
+
         if not self.active:
             return
 
@@ -234,47 +263,79 @@ class MultiAgent(FeatureAgent):
             remote_agent = await self.env.connect(addr)
             opinion, _ = await remote_agent.evaluate(artifact)
             opinions[addr] = opinion
-            self.connection_totals[addr] += opinion
+
+        self.stats['opinions'].append(opinions)
+
+        # Record max and random rewards
+        best_eval = opinions[max(opinions, key=opinions.get)]
+        self.stats['max_rewards'].append(best_eval)
+        self.stats['random_rewards'].append(np.sum(list(opinions.values())) / len(opinions))
 
         # Non-linear stochastic gradient descent selection and update
         sgd_chosen_addr = self.learner.sgd_choose(features)
-        self.sgd_reward += opinions[sgd_chosen_addr]
-        self.learner.update_sgd(opinions[sgd_chosen_addr], sgd_chosen_addr, features)
+        sgd_reward = opinions[sgd_chosen_addr]
+        self.learner.update_sgd(sgd_reward, sgd_chosen_addr, features)
+        record_stats('sgd', sgd_chosen_addr,
+                     sgd_reward, sgd_reward == best_eval)
 
         # Q-learning selection and update
         bandit_chosen_addr = self.learner.bandit_choose()
-        self.bandit_reward += opinions[bandit_chosen_addr]
-        self.learner.update_bandit(opinions[bandit_chosen_addr], bandit_chosen_addr)
+        bandit_reward = opinions[bandit_chosen_addr]
+        self.learner.update_bandit(bandit_reward, bandit_chosen_addr)
+        record_stats('bandit', bandit_chosen_addr,
+                     bandit_reward, bandit_reward == best_eval)
 
         # Linear regression selection and update
         linear_chosen_addr = self.learner.linear_choose(features)
-        self.linear_reward += opinions[linear_chosen_addr]
-        self.learner.update_linear_regression(opinions[linear_chosen_addr], linear_chosen_addr, features)
-
-        # Update expected random reward and max reward
-        self.random_reward += np.sum(list(opinions.values())) / len(opinions)
-        self.max_reward += opinions[max(opinions, key=opinions.get)]
+        linear_reward = opinions[linear_chosen_addr]
+        self.learner.update_linear_regression(linear_reward, linear_chosen_addr, features)
+        record_stats('linear', linear_chosen_addr,
+                     linear_reward, linear_reward == best_eval)
 
     @aiomas.expose
     def close(self, folder=None):
         if not self.active:
             return
 
-        # Log stats about the run
-        self._log(logging.INFO, 'Linear regression reward: {} ({}%)'
-                  .format(int(np.around(self.linear_reward)), int(np.around(self.linear_reward / self.max_reward, 2) * 100)))
-        self._log(logging.INFO, 'Non-linear SGD reward: {} ({}%)'
-                  .format(int(np.around(self.sgd_reward)), int(np.around(self.sgd_reward / self.max_reward, 2) * 100)))
-        self._log(logging.INFO, 'Bandit reward: {} ({}%)'
-                  .format(int(np.around(self.bandit_reward)), int(np.around(self.bandit_reward / self.max_reward, 2) * 100)))
-        self._log(logging.INFO, 'Max reward: ' + str(int(np.around(self.max_reward))))
-        self._log(logging.INFO, 'Expected random reward: {} ({}%)'
-                  .format(int(np.around(self.random_reward)), int(np.around(self.random_reward / self.max_reward, 2) * 100)))
-        self._log(logging.INFO, 'Connection totals:')
-        for addr, total in self.connection_totals.items():
-            self._log(logging.INFO, '{}: {}'.format(addr, int(np.around(total))))
-        self._log(logging.INFO, 'Bandit perceived as best: ' + max(self.learner.bandits, key=self.learner.bandits.get))
+        # Save stats to a file
+        path = self.logger.folder
+        files_in_path = len(os.listdir(path))
+        pickle.dump(self.stats, open(os.path.join(path, 'stats{}.p'.format(files_in_path)), 'wb'))
 
+        # Log stats about the run
+        max_reward = np.sum(self.stats['max_rewards'])
+        random_reward = np.sum(self.stats['random_rewards'])
+        linear_reward = np.sum(self.stats['linear']['rewards'])
+        linear_chose_best = np.sum(self.stats['linear']['chose_best'])
+        sgd_reward = np.sum(self.stats['sgd']['rewards'])
+        sgd_chose_best = np.sum(self.stats['sgd']['chose_best'])
+        bandit_reward = np.sum(self.stats['bandit']['rewards'])
+        bandit_chose_best = np.sum(self.stats['bandit']['chose_best'])
+
+        self._log(logging.INFO, 'Linear regression reward: {} ({}%), optimal {}/{} times'
+                  .format(int(np.around(linear_reward)),
+                          int(np.around(linear_reward / max_reward, 2) * 100),
+                          linear_chose_best, self.age))
+        self._log(logging.INFO, 'Non-linear SGD reward: {} ({}%), optimal {}/{} times'
+                  .format(int(np.around(sgd_reward)),
+                          int(np.around(sgd_reward / max_reward, 2) * 100),
+                          sgd_chose_best, self.age))
+        self._log(logging.INFO, 'Bandit reward: {} ({}%), optimal {}/{} times'
+                  .format(int(np.around(bandit_reward)),
+                          int(np.around(bandit_reward / max_reward, 2) * 100),
+                          bandit_chose_best, self.age))
+        self._log(logging.INFO, 'Max reward: ' + str(int(np.around(max_reward))))
+        self._log(logging.INFO, 'Expected random reward: {} ({}%)'
+                  .format(int(np.around(random_reward)),
+                          int(np.around(random_reward / max_reward, 2) * 100)))
+        self._log(logging.INFO, 'Connection totals:')
+
+        for connection in self.connections.keys():
+            total = 0
+            for opinions in self.stats['opinions']:
+                total += opinions[connection]
+            self._log(logging.INFO, '{}: {}'.format(connection, int(np.around(total))))
+        self._log(logging.INFO, 'Bandit perceived as best: ' + max(self.learner.bandits, key=self.learner.bandits.get))
 
     class MultiLearner():
         '''A learner that is capable of using and updating multiple models.
@@ -322,7 +383,7 @@ class MultiAgent(FeatureAgent):
             estimate = np.sum(self.sgd_weights[addr] * vals)
             return estimate, vals
 
-        def update_bandit(self, true_value, addr, discount_factor = 0, learning_factor=0.9):
+        def update_bandit(self, true_value, addr, discount_factor=0, learning_factor=0.9):
             '''
             Updates the Q-value for addr.
 
