@@ -18,76 +18,93 @@ import pickle
 import os
 import matplotlib.pyplot as plt
 import shutil
+from collections import Counter
 
 
-def create_multi_graphs(folder, window_size):
-    # Percentage arrays
-    sgd = None
-    bandit = None
-    linear = None
-    length = None
-    max_rewards = None
+def calculate_averages(folder):
+    '''Calculates average stats from stat files in folder.'''
+    keys_to_avg = [('sgd', 'rewards'), ('sgd', 'chose_best'),
+                   ('bandit', 'rewards'), ('bandit', 'chose_best'),
+                   ('linear', 'rewards'), ('linear', 'chose_best'),
+                   'random_rewards', 'max_rewards']
 
-    # Calculate averages from all runs
+    files = os.listdir(folder)
+    first_stats = pickle.load(open(os.path.join(folder, files[0]), 'rb'))
+    avg_mul = 1 / len(files)
+    avg_stats = {}
 
-    for file in os.listdir(folder):
-        stats = pickle.load(open(os.path.join(folder, file), 'rb'))
+    for key in keys_to_avg:
+        if type(key) is tuple:
+            if key[0] not in avg_stats:
+                avg_stats[key[0]] = {}
+            avg_stats[key[0]][key[1]] = np.array(first_stats[key[0]][key[1]]) * avg_mul
+        else:
+            avg_stats[key] = np.array(first_stats[key]) * avg_mul
 
-        if sgd is None:
-            length = len(stats['max_rewards'])
-            sgd = np.zeros(length)
-            bandit = np.zeros(length)
-            linear = np.zeros(length)
-            max_rewards = np.zeros(length)
+    for i in range(1, len(files)):
+        stats = pickle.load(open(os.path.join(folder, files[i]), 'rb'))
 
-        sgd = np.add(sgd, stats['sgd']['rewards'])
-        bandit = np.add(bandit, stats['bandit']['rewards'])
-        linear = np.add(linear, stats['linear']['rewards'])
-        max_rewards = np.add(max_rewards, stats['max_rewards'])
+        for key in keys_to_avg:
+            if type(key) is tuple:
+                avg_stats[key[0]][key[1]] = avg_stats[key[0]][key[1]] + np.array(stats[key[0]][key[1]]) * avg_mul
+            else:
+                avg_stats[key] = avg_stats[key] + np.array(stats[key]) * avg_mul
 
-    num_of_files = len(os.listdir(folder))
-    sgd = sgd / num_of_files
-    bandit = bandit / num_of_files
-    linear = linear / num_of_files
-    max_rewards = max_rewards / num_of_files
-
-    # Use the averages to create a graph
-
-    x = []
-    last_idx = length - 1
-
-    sgd_sums = []
-    bandit_sums = []
-    linear_sums = []
+    return avg_stats
 
 
-    i = 0
-    while i < last_idx:
-        # Don't use non-complete window
-        if i + window_size - 1 > last_idx:
-            break
+def create_graphs(folder, window_size):
+    def create_graph(sgd, bandit, linear, maximums, ylabel):
+        x = []
+        last_idx = len(sgd) - 1
 
-        sgd_reward = np.sum(sgd[0:i+window_size])
-        bandit_reward = np.sum(bandit[0:i+window_size])
-        linear_reward = np.sum(linear[0:i+window_size])
-        max_reward = np.sum(max_rewards[0:i+window_size])
+        sgd_sums = []
+        bandit_sums = []
+        linear_sums = []
 
-        sgd_sums.append(sgd_reward / max_reward)
-        bandit_sums.append(bandit_reward / max_reward)
-        linear_sums.append(linear_reward / max_reward)
+        i = 0
+        while i < last_idx:
+            # Don't use non-complete window
+            if i + window_size - 1 > last_idx:
+                break
 
-        i += window_size
+            sgd_reward = np.sum(sgd[0:i + window_size])
+            bandit_reward = np.sum(bandit[0:i + window_size])
+            linear_reward = np.sum(linear[0:i + window_size])
+            maximum = np.sum(maximums[0:i + window_size])
 
-        x.append(i)
+            sgd_sums.append(sgd_reward / maximum)
+            bandit_sums.append(bandit_reward / maximum)
+            linear_sums.append(linear_reward / maximum)
 
-    # Draw the graph
+            i += window_size
 
-    plt.plot(x, sgd_sums, label='SGD')
-    plt.plot(x, linear_sums, label='linear')
-    plt.plot(x, bandit_sums, label='bandit')
-    plt.ylabel('Reward percentage')
-    plt.legend()
-    plt.show()
+            x.append(i)
+
+        # Draw the graph
+
+        plt.plot(x, sgd_sums, label='SGD')
+        plt.plot(x, linear_sums, label='linear')
+        plt.plot(x, bandit_sums, label='bandit')
+        plt.ylabel(ylabel)
+        plt.legend()
+        plt.show()
+
+    avg_stats = calculate_averages(folder)
+
+    # Create reward graph
+    create_graph(avg_stats['sgd']['rewards'],
+                 avg_stats['bandit']['rewards'],
+                 avg_stats['linear']['rewards'],
+                 avg_stats['max_rewards'],
+                 'Reward percentage')
+
+    # Create optimal choices graph
+    create_graph(avg_stats['sgd']['chose_best'],
+                 avg_stats['bandit']['chose_best'],
+                 avg_stats['linear']['chose_best'],
+                 np.ones(len(avg_stats['sgd']['chose_best'])),
+                 'Optimal choices')
 
 
 if __name__ == "__main__":
@@ -98,7 +115,7 @@ if __name__ == "__main__":
     search_width = 100
 
     num_of_simulations = 100
-    num_of_steps = 1500
+    num_of_steps = 1000
 
     create_kwargs = {'length': num_of_features}
 
@@ -153,4 +170,4 @@ if __name__ == "__main__":
         sim.async_steps(num_of_steps)
         sim.end()
 
-    create_multi_graphs(active_folder, 10)
+    create_graphs(active_folder, 10)
