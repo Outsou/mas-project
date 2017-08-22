@@ -1,5 +1,5 @@
 from creamas.rules import RuleLeaf
-# from artifacts.genetic_image_artifact import GeneticImageArtifact
+from artifacts import GeneticImageArtifact
 from artifacts import DummyArtifact
 from deap.gp import Primitive, Terminal, PrimitiveSet, PrimitiveSetTyped
 from deap.base import Toolbox
@@ -40,9 +40,9 @@ def get_type_ser():
 def get_rule_leaf_ser():
     return RuleLeaf, pickle.dumps, pickle.loads
 
-#
-# def get_genetic_image_artifact_ser():
-#     return GeneticImageArtifact, pickle.dumps, pickle.loads
+
+def get_genetic_image_artifact_ser():
+    return GeneticImageArtifact, pickle.dumps, pickle.loads
 
 
 def get_ndarray_ser():

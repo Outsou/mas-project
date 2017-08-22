@@ -107,7 +107,7 @@ class FeatureAgent(RuleAgent):
             #self.learn(artifact, self.teaching_iterations)
             return True, artifact
         else:
-            return False, artifacts
+            return False, artifact
 
     @aiomas.expose
     def get_name(self):
@@ -125,11 +125,9 @@ class FeatureAgent(RuleAgent):
             self.learn(artifact)
 
     @aiomas.expose
-    def save_artifacts(self, folder):
-        i = 0
-        for art in reversed(self.stmem.artifacts[:self.stmem.length]):
-            i += 1
-            self.artifact_cls.save_artifact(art, folder, i, art.evals[self.name])
+    def get_artifacts(self):
+        artifacts = list(reversed(self.stmem.artifacts[:self.stmem.length]))
+        return artifacts, self.artifact_cls
 
     @aiomas.expose
     def get_log_folder(self):

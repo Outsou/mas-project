@@ -25,11 +25,11 @@ def create_environment(num_of_slaves):
 
     env_kwargs = {'extra_serializers': [get_type_ser, get_primitive_ser, get_terminal_ser,
                                         get_primitive_set_typed_ser, get_func_ser, get_toolbox_ser,
-                                        get_rule_leaf_ser,
+                                        get_rule_leaf_ser, get_genetic_image_artifact_ser,
                                         get_ndarray_ser, get_dummy_ser], 'codec': aiomas.MsgPack}
     slave_kwargs = [{'extra_serializers': [get_type_ser, get_primitive_ser, get_terminal_ser,
                                            get_primitive_set_typed_ser, get_func_ser, get_toolbox_ser,
-                                           get_rule_leaf_ser,
+                                           get_rule_leaf_ser, get_genetic_image_artifact_ser,
                                            get_ndarray_ser, get_dummy_ser], 'codec': aiomas.MsgPack} for _ in range(len(addrs))]
 
     menv = StatEnvironment(addr,

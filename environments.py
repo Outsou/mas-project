@@ -69,4 +69,6 @@ class StatEnvironment(MultiEnvironment):
             if os.path.exists(agent_folder):
                 shutil.rmtree(agent_folder)
             os.makedirs(agent_folder)
-            run(agent.save_artifacts(agent_folder))
+            artifacts, artifact_cls = run(agent.get_artifacts())
+            for i in range(len(artifacts)):
+                artifact_cls.save_artifact(artifacts[i], agent_folder, i, artifacts[i].evals[name])

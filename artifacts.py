@@ -68,6 +68,7 @@ class GeneticImageArtifact(Artifact):
         plt.imshow(artifact.obj, shape=artifact.obj.shape)
         plt.title('Eval: {}'.format(eval))
         plt.savefig('{}/artifact{}'.format(folder, id))
+        plt.close()
 
     @staticmethod
     def max_distance(create_kwargs):
