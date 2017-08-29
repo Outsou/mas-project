@@ -26,6 +26,7 @@ def calculate_averages(folder):
     keys_to_avg = [('sgd', 'rewards'), ('sgd', 'chose_best'),
                    ('bandit', 'rewards'), ('bandit', 'chose_best'),
                    ('linear', 'rewards'), ('linear', 'chose_best'),
+                   ('poly', 'rewards'), ('poly', 'chose_best'),
                    'random_rewards', 'max_rewards']
 
     files = os.listdir(folder)
@@ -54,14 +55,15 @@ def calculate_averages(folder):
 
 
 def create_graphs(folder, window_size, title):
-    def create_graph(sgd, bandit, linear, maximums, ylabel, title, random=None):
+    def create_graph(models, maximums, ylabel, title, random=None):
         x = []
-        last_idx = len(sgd) - 1
+        last_idx = len(models[0][1]) - 1
 
-        sgd_sums = []
-        bandit_sums = []
-        linear_sums = []
         random_sums = []
+
+        model_sums = {}
+        for model in models:
+            model_sums[model[0]] = []
 
         i = 0
         while i < last_idx:
@@ -69,14 +71,10 @@ def create_graphs(folder, window_size, title):
             if i + window_size - 1 > last_idx:
                 break
 
-            sgd_reward = np.sum(sgd[0:i + window_size])
-            bandit_reward = np.sum(bandit[0:i + window_size])
-            linear_reward = np.sum(linear[0:i + window_size])
             maximum = np.sum(maximums[0:i + window_size])
 
-            sgd_sums.append(sgd_reward / maximum)
-            bandit_sums.append(bandit_reward / maximum)
-            linear_sums.append(linear_reward / maximum)
+            for model in models:
+                model_sums[model[0]].append(np.sum(model[1][0:i + window_size]) / maximum)
 
             if random is not None:
                 random_reward = np.sum(random[0:i + window_size])
@@ -90,9 +88,9 @@ def create_graphs(folder, window_size, title):
         if random is not None:
             plt.plot(x, random_sums, label='Random')
 
-        plt.plot(x, sgd_sums, label='SGD')
-        plt.plot(x, linear_sums, label='linear')
-        plt.plot(x, bandit_sums, label='bandit')
+        for model in models:
+            plt.plot(x, model_sums[model[0]], label=model[0])
+
         plt.ylabel(ylabel)
         plt.legend()
         plt.title(title)
@@ -102,21 +100,24 @@ def create_graphs(folder, window_size, title):
     avg_stats = calculate_averages(folder)
 
     # Create reward graph
-    create_graph(avg_stats['sgd']['rewards'],
-                 avg_stats['bandit']['rewards'],
-                 avg_stats['linear']['rewards'],
+    models = [('SGD', avg_stats['sgd']['rewards']),
+              ('Q', avg_stats['bandit']['rewards']),
+              ('linear', avg_stats['linear']['rewards']),
+              ('poly', avg_stats['poly']['rewards'])]
+
+    create_graph(models,
                  avg_stats['max_rewards'],
                  'Reward percentage',
                  title,
                  avg_stats['random_rewards'])
 
     # Create optimal choices graph
-    create_graph(avg_stats['sgd']['chose_best'],
-                 avg_stats['bandit']['chose_best'],
-                 avg_stats['linear']['chose_best'],
-                 np.ones(len(avg_stats['sgd']['chose_best'])),
-                 'Optimal choices',
-                 title)
+    # create_graph(avg_stats['sgd']['chose_best'],
+    #              avg_stats['bandit']['chose_best'],
+    #              avg_stats['linear']['chose_best'],
+    #              np.ones(len(avg_stats['sgd']['chose_best'])),
+    #              'Optimal choices',
+    #              title)
 
 
 if __name__ == "__main__":
@@ -128,7 +129,7 @@ if __name__ == "__main__":
     std = 0.2
     search_width = 10
 
-    num_of_simulations = 100
+    num_of_simulations = 40
     num_of_steps = 1000
 
     create_kwargs = {'length': num_of_features}
