@@ -501,7 +501,7 @@ class MultiAgent(FeatureAgent):
                 return np.random.choice(list(self.poly_weights.keys()))
 
             poly_feats = self._poly_transform(features)
-            best_estimate = -1
+            best_estimate = -np.inf
             best_addr = None
 
             for addr in self.poly_weights.keys():
