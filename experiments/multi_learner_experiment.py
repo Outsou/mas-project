@@ -18,87 +18,119 @@ import pickle
 import os
 import matplotlib.pyplot as plt
 import shutil
+import time
 
 
-def create_multi_graphs(folder, window_size):
-    # Percentage arrays
-    sgd = None
-    bandit = None
-    linear = None
-    length = None
-    max_rewards = None
+def calculate_averages(folder):
+    '''Calculates average stats from stat files in folder.'''
+    keys_to_avg = [('sgd', 'rewards'), ('sgd', 'chose_best'),
+                   ('bandit', 'rewards'), ('bandit', 'chose_best'),
+                   ('linear', 'rewards'), ('linear', 'chose_best'),
+                   ('poly', 'rewards'), ('poly', 'chose_best'),
+                   'random_rewards', 'max_rewards']
 
-    # Calculate averages from all runs
+    files = os.listdir(folder)
+    first_stats = pickle.load(open(os.path.join(folder, files[0]), 'rb'))
+    avg_mul = 1 / len(files)
+    avg_stats = {}
 
-    for file in os.listdir(folder):
-        stats = pickle.load(open(os.path.join(folder, file), 'rb'))
+    for key in keys_to_avg:
+        if type(key) is tuple:
+            if key[0] not in avg_stats:
+                avg_stats[key[0]] = {}
+            avg_stats[key[0]][key[1]] = np.array(first_stats[key[0]][key[1]]) * avg_mul
+        else:
+            avg_stats[key] = np.array(first_stats[key]) * avg_mul
 
-        if sgd is None:
-            length = len(stats['max_rewards'])
-            sgd = np.zeros(length)
-            bandit = np.zeros(length)
-            linear = np.zeros(length)
-            max_rewards = np.zeros(length)
+    for i in range(1, len(files)):
+        stats = pickle.load(open(os.path.join(folder, files[i]), 'rb'))
 
-        sgd = np.add(sgd, stats['sgd']['rewards'])
-        bandit = np.add(bandit, stats['bandit']['rewards'])
-        linear = np.add(linear, stats['linear']['rewards'])
-        max_rewards = np.add(max_rewards, stats['max_rewards'])
+        for key in keys_to_avg:
+            if type(key) is tuple:
+                avg_stats[key[0]][key[1]] = avg_stats[key[0]][key[1]] + np.array(stats[key[0]][key[1]]) * avg_mul
+            else:
+                avg_stats[key] = avg_stats[key] + np.array(stats[key]) * avg_mul
 
-    num_of_files = len(os.listdir(folder))
-    sgd = sgd / num_of_files
-    bandit = bandit / num_of_files
-    linear = linear / num_of_files
-    max_rewards = max_rewards / num_of_files
-
-    # Use the averages to create a graph
-
-    x = []
-    last_idx = length - 1
-
-    sgd_sums = []
-    bandit_sums = []
-    linear_sums = []
+    return avg_stats
 
 
-    i = 0
-    while i < last_idx:
-        # Don't use non-complete window
-        if i + window_size - 1 > last_idx:
-            break
+def create_graphs(folder, window_size, title):
+    def create_graph(models, maximums, ylabel, title, random=None):
+        x = []
+        last_idx = len(models[0][1]) - 1
 
-        sgd_reward = np.sum(sgd[0:i+window_size])
-        bandit_reward = np.sum(bandit[0:i+window_size])
-        linear_reward = np.sum(linear[0:i+window_size])
-        max_reward = np.sum(max_rewards[0:i+window_size])
+        random_sums = []
 
-        sgd_sums.append(sgd_reward / max_reward)
-        bandit_sums.append(bandit_reward / max_reward)
-        linear_sums.append(linear_reward / max_reward)
+        model_sums = {}
+        for model in models:
+            model_sums[model[0]] = []
 
-        i += window_size
+        i = 0
+        while i < last_idx:
+            # Don't use non-complete window
+            if i + window_size - 1 > last_idx:
+                break
 
-        x.append(i)
+            maximum = np.sum(maximums[0:i + window_size])
 
-    # Draw the graph
+            for model in models:
+                model_sums[model[0]].append(np.sum(model[1][0:i + window_size]) / maximum)
 
-    plt.plot(x, sgd_sums, label='SGD')
-    plt.plot(x, linear_sums, label='linear')
-    plt.plot(x, bandit_sums, label='bandit')
-    plt.ylabel('Reward percentage')
-    plt.legend()
-    plt.show()
+            if random is not None:
+                random_reward = np.sum(random[0:i + window_size])
+                random_sums.append(random_reward / maximum)
+
+            i += window_size
+
+            x.append(i)
+
+        # Draw the graph
+        if random is not None:
+            plt.plot(x, random_sums, label='Random')
+
+        for model in models:
+            plt.plot(x, model_sums[model[0]], label=model[0])
+
+        plt.ylabel(ylabel)
+        plt.legend()
+        plt.title(title)
+        plt.show()
+        plt.close()
+
+    avg_stats = calculate_averages(folder)
+
+    # Create reward graph
+    models = [('SGD', avg_stats['sgd']['rewards']),
+              ('Q', avg_stats['bandit']['rewards']),
+              ('linear', avg_stats['linear']['rewards']),
+              ('poly', avg_stats['poly']['rewards'])]
+
+    create_graph(models,
+                 avg_stats['max_rewards'],
+                 'Reward percentage',
+                 title,
+                 avg_stats['random_rewards'])
+
+    # Create optimal choices graph
+    # create_graph(avg_stats['sgd']['chose_best'],
+    #              avg_stats['bandit']['chose_best'],
+    #              avg_stats['linear']['chose_best'],
+    #              np.ones(len(avg_stats['sgd']['chose_best'])),
+    #              'Optimal choices',
+    #              title)
 
 
 if __name__ == "__main__":
+    start_time = time.time()
+
     # Parameters
     num_of_agents = 6
     num_of_features = 3
     std = 0.2
-    search_width = 100
+    search_width = 10
 
-    num_of_simulations = 100
-    num_of_steps = 1500
+    num_of_simulations = 40
+    num_of_steps = 1000
 
     create_kwargs = {'length': num_of_features}
 
@@ -109,7 +141,7 @@ if __name__ == "__main__":
 
     for _ in range(num_of_simulations):
 
-        menv = create_environment(num_of_slaves=8)
+        menv = create_environment(num_of_slaves=4)
 
         active = True
 
@@ -153,4 +185,7 @@ if __name__ == "__main__":
         sim.async_steps(num_of_steps)
         sim.end()
 
-    create_multi_graphs(active_folder, 10)
+    print('Run took {}s'.format(int(np.around(time.time() - start_time))))
+    title = 'Connections: {}, features: {}, search width: {}, runs: {}'\
+        .format(num_of_agents - 1, num_of_features, search_width, num_of_simulations)
+    create_graphs(active_folder, 10, title)

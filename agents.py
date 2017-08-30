@@ -107,7 +107,7 @@ class FeatureAgent(RuleAgent):
             #self.learn(artifact, self.teaching_iterations)
             return True, artifact
         else:
-            return False, artifacts
+            return False, artifact
 
     @aiomas.expose
     def get_name(self):
@@ -125,11 +125,9 @@ class FeatureAgent(RuleAgent):
             self.learn(artifact)
 
     @aiomas.expose
-    def save_artifacts(self, folder):
-        i = 0
-        for art in reversed(self.stmem.artifacts[:self.stmem.length]):
-            i += 1
-            self.artifact_cls.save_artifact(art, folder, i, art.evals[self.name])
+    def get_artifacts(self):
+        artifacts = list(reversed(self.stmem.artifacts[:self.stmem.length]))
+        return artifacts, self.artifact_cls
 
     @aiomas.expose
     def get_log_folder(self):
@@ -202,6 +200,7 @@ class MultiAgent(FeatureAgent):
         self.stats = {'sgd': copy.deepcopy(stat_dict),
                       'bandit': copy.deepcopy(stat_dict),
                       'linear': copy.deepcopy(stat_dict),
+                      'poly': copy.deepcopy(stat_dict),
                       'random_rewards': [],
                       'max_rewards': [],
                       'opinions': []}
@@ -292,6 +291,13 @@ class MultiAgent(FeatureAgent):
         record_stats('linear', linear_chosen_addr,
                      linear_reward, linear_reward == best_eval)
 
+        # Polynomial regression selection and update
+        poly_chosen_addr = self.learner.poly_choose(features)
+        poly_reward = opinions[poly_chosen_addr]
+        self.learner.update_poly(poly_reward, poly_chosen_addr, features)
+        record_stats('poly', poly_chosen_addr,
+                     poly_reward, poly_reward == best_eval)
+
     @aiomas.expose
     def close(self, folder=None):
         if not self.active:
@@ -311,6 +317,8 @@ class MultiAgent(FeatureAgent):
         sgd_chose_best = np.sum(self.stats['sgd']['chose_best'])
         bandit_reward = np.sum(self.stats['bandit']['rewards'])
         bandit_chose_best = np.sum(self.stats['bandit']['chose_best'])
+        poly_reward = np.sum(self.stats['poly']['rewards'])
+        poly_chose_best = np.sum(self.stats['poly']['chose_best'])
 
         self._log(logging.INFO, 'Linear regression reward: {} ({}%), optimal {}/{} times'
                   .format(int(np.around(linear_reward)),
@@ -320,6 +328,10 @@ class MultiAgent(FeatureAgent):
                   .format(int(np.around(sgd_reward)),
                           int(np.around(sgd_reward / max_reward, 2) * 100),
                           sgd_chose_best, self.age))
+        self._log(logging.INFO, 'Polynomial regression reward: {} ({}%), optimal {}/{} times'
+                  .format(int(np.around(poly_reward)),
+                          int(np.around(poly_reward / max_reward, 2) * 100),
+                          poly_chose_best, self.age))
         self._log(logging.INFO, 'Bandit reward: {} ({}%), optimal {}/{} times'
                   .format(int(np.around(bandit_reward)),
                           int(np.around(bandit_reward / max_reward, 2) * 100),
@@ -361,6 +373,11 @@ class MultiAgent(FeatureAgent):
             self.std = std
             self.e = e
 
+            # Get length of the polynomial transform
+            poly_len = len(self._poly_transform(np.zeros(num_of_features)))
+
+            # Initialize parameters
+            self.poly_weights = {}
             self.linear_weights = {}
             self.sgd_weights = {}
             self.centroids = {}
@@ -371,8 +388,25 @@ class MultiAgent(FeatureAgent):
                 self.sgd_weights[addr] = np.array(init_vals)
                 self.centroids[addr] = np.array(init_vals)
                 self.bandits[addr] = 1
+                self.poly_weights[addr] = np.array([0.5] * poly_len)
 
             self.max = gaus_pdf(1, 1, std)
+
+        @staticmethod
+        def _poly_transform(features):
+            length = len(features)
+            transformation = []
+            for i in range(length):
+                transformation.append(features[i] ** 2)
+                transformation.append(np.sqrt(2) * features[i])
+            for i in range(length - 1):
+                transformation.append(np.sqrt(2) * features[-1] * features[i])
+            for i in range(1, length - 2):
+                transformation.append(np.sqrt(2) * features[-2] * features[i])
+            for i in range(1, length - 1):
+                transformation.append(np.sqrt(2) * features[i] * features[0])
+            transformation.append(1)
+            return np.array(transformation)
 
         def _sgd_estimate(self, addr, features):
             '''Estimate value the SGD model.
@@ -429,9 +463,15 @@ class MultiAgent(FeatureAgent):
 
         def update_linear_regression(self, true_value, addr, features):
             feature_vec = np.append(features, 1)
-            error = true_value - self.linear_weights[addr] * feature_vec
+            error = true_value - np.sum(self.linear_weights[addr] * feature_vec)
             gradient = feature_vec * error
             self.linear_weights[addr] += self.weight_rate * gradient
+
+        def update_poly(self, true_value, addr, features):
+            poly_feats = self._poly_transform(features)
+            error = true_value - np.sum(self.poly_weights[addr] * poly_feats)
+            gradient = poly_feats * error
+            self.poly_weights[addr] += self.weight_rate * gradient
 
         def sgd_choose(self, features):
             '''
@@ -439,8 +479,6 @@ class MultiAgent(FeatureAgent):
 
             :param features:
                 Objective features of an artifact.
-            :param e:
-                Chance that a random connection will be chosen.
             :return:
                 The chosen connection's address.
             '''
@@ -458,14 +496,28 @@ class MultiAgent(FeatureAgent):
 
             return best_addr
 
+        def poly_choose(self, features):
+            if np.random.rand() < self.e:
+                return np.random.choice(list(self.poly_weights.keys()))
+
+            poly_feats = self._poly_transform(features)
+            best_estimate = -np.inf
+            best_addr = None
+
+            for addr in self.poly_weights.keys():
+                estimate = np.sum(self.poly_weights[addr] * poly_feats)
+                if estimate > best_estimate:
+                    best_estimate = estimate
+                    best_addr = addr
+
+            return best_addr
+
         def bandit_choose(self):
             '''
             Choose a connection with the Q-learning model.
 
             :param features:
                 Objective features of an artifact.
-            :param e:
-                Chance that a random connection will be chosen.
             :return:
                 The chosen connection's address.
             '''
