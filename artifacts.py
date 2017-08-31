@@ -65,7 +65,7 @@ class GeneticImageArtifact(Artifact):
         :param eval:
             Value of the artifact. This is written to the image.
         '''
-        plt.imshow(artifact.obj, shape=artifact.obj.shape)
+        plt.imshow(artifact.obj, shape=artifact.obj.shape, interpolation='none')
         plt.title('Eval: {}'.format(eval))
         plt.savefig('{}/artifact{}'.format(folder, id))
         plt.close()
@@ -116,24 +116,15 @@ class GeneticImageArtifact(Artifact):
 
         # Calculate color values for each x, y coordinate
         coords = [(x, y) for x in range(width) for y in range(height)]
-        for coord in coords:
-            x = coord[0]
-            y = coord[1]
-
+        for x, y in coords:
             # Normalize coordinates in range [-1, 1]
             x_normalized = x / width * 2 - 1
             y_normalized = y / height * 2 - 1
-            color_value = np.around(np.array(func(x_normalized, y_normalized)))
+            image[x, y, :] = np.around(np.array(func(x_normalized,
+                                                     y_normalized)))
 
-            # Clip values in range [0, 255]
-            for i in range(3):
-                if color_value[i] < 0:
-                    image[x, y, i] = 0
-                elif color_value[i] > 255:
-                    image[x, y, i] = 255
-                else:
-                    image[x, y, i] = color_value[i]
-
+        # Clip values in range [0, 255]
+        image = np.clip(image, 0, 255, out=image)
         return np.uint8(image)
 
     @staticmethod

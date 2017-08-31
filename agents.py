@@ -13,9 +13,11 @@ import os
 
 class FeatureAgent(RuleAgent):
     '''The base class for agents that use features.
-    Should work with any artifact class that implements distance, max_distance, and invent functions.'''
-    def __init__(self, environment, artifact_cls, create_kwargs, rules, rule_weights = None,
-                 novelty_weight=0.5, search_width=10, critic_threshold=0.5, veto_threshold=0.5,
+    Should work with any artifact class that implements distance, max_distance,
+    and invent functions.'''
+    def __init__(self, environment, artifact_cls, create_kwargs, rules,
+                 rule_weights = None, novelty_weight=0.5, search_width=10,
+                 critic_threshold=0.5, veto_threshold=0.5,
                  log_folder=None, log_level=logging.INFO, memsize=0):
         '''
 
@@ -46,7 +48,10 @@ class FeatureAgent(RuleAgent):
                          log_level=log_level)
 
         max_distance = artifact_cls.max_distance(create_kwargs)
-        self.stmem = FeatureAgent.STMemory(artifact_cls=artifact_cls, length=memsize, max_length=memsize, max_distance=max_distance)
+        self.stmem = FeatureAgent.STMemory(artifact_cls=artifact_cls,
+                                           length=memsize,
+                                           max_length=memsize,
+                                           max_distance=max_distance)
         self.artifact_cls = artifact_cls
         self._own_threshold = critic_threshold
         self._veto_threshold = veto_threshold
