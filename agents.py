@@ -185,7 +185,7 @@ class MultiAgent(FeatureAgent):
     Used for testing and comparing different modeling methods.
     An artifact is evaluated with a weighed sum of its features' distances from the preferred values.
     The distance is calculated using a gaussian distribution's pdf.'''
-    def __init__(self, environment, std, active=False, *args, **kwargs):
+    def __init__(self, environment, std, data_folder, active=False, *args, **kwargs):
         '''
         :param std:
             Standard deviation for the gaussian distribution used in evaluation.
@@ -205,6 +205,7 @@ class MultiAgent(FeatureAgent):
                       'max_rewards': [],
                       'opinions': []}
         self.learner = None
+        self.data_folder = data_folder
 
     def get_features(self, artifact):
         '''Return objective values for features without mapping.'''
@@ -304,9 +305,9 @@ class MultiAgent(FeatureAgent):
             return
 
         # Save stats to a file
-        path = self.logger.folder
+        path = self.data_folder
         files_in_path = len(os.listdir(path))
-        pickle.dump(self.stats, open(os.path.join(path, 'stats{}.p'.format(files_in_path)), 'wb'))
+        pickle.dump(self.stats, open(os.path.join(path, 'stats{}.p'.format(files_in_path + 1)), 'wb'))
 
         # Log stats about the run
         max_reward = np.sum(self.stats['max_rewards'])

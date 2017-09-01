@@ -54,7 +54,7 @@ def calculate_averages(folder):
     return avg_stats
 
 
-def create_graphs(folder, window_size, title):
+def create_graphs(folder, window_size, title, file_name, stats):
     def create_graph(models, maximums, ylabel, title, random=None):
         x = []
         last_idx = len(models[0][1]) - 1
@@ -94,22 +94,22 @@ def create_graphs(folder, window_size, title):
         plt.ylabel(ylabel)
         plt.legend()
         plt.title(title)
-        plt.show()
+        # plt.show()
+        path = os.path.split(folder)[0]
+        plt.savefig(os.path.join(path, file_name))
         plt.close()
 
-    avg_stats = calculate_averages(folder)
-
     # Create reward graph
-    models = [('SGD', avg_stats['sgd']['rewards']),
-              ('Q', avg_stats['bandit']['rewards']),
-              ('linear', avg_stats['linear']['rewards']),
-              ('poly', avg_stats['poly']['rewards'])]
+    models = [('SGD', stats['sgd']['rewards']),
+              ('Q', stats['bandit']['rewards']),
+              ('linear', stats['linear']['rewards']),
+              ('poly', stats['poly']['rewards'])]
 
     create_graph(models,
-                 avg_stats['max_rewards'],
+                 stats['max_rewards'],
                  'Reward percentage',
                  title,
-                 avg_stats['random_rewards'])
+                 stats['random_rewards'])
 
     # Create optimal choices graph
     # create_graph(avg_stats['sgd']['chose_best'],
@@ -119,73 +119,113 @@ def create_graphs(folder, window_size, title):
     #              'Optimal choices',
     #              title)
 
+def create_param_graph(avgs_folder, save_folder, param_name, param_vals, models):
+    files = os.listdir(avgs_folder)
+    random_rewards = []
+
+    rewards = {}
+    for model in models:
+        rewards[model] = []
+
+    for file in files:
+        stats = pickle.load(open(os.path.join(avgs_folder, file), 'rb'))
+        max_reward = stats['max_rewards'][-1]
+        for model in models:
+            rewards[model].append(stats[model]['rewards'][-1] / max_reward)
+        random_rewards.append(stats['random_rewards'][-1] / max_reward)
+
+    for model in models:
+        plt.plot(param_vals, rewards[model], label=model)
+
+    plt.plot(param_vals, random_rewards, label='random')
+    plt.legend()
+    plt.savefig(os.path.join(save_folder, '{}.png'.format(param_name)))
+    plt.close()
+
 
 if __name__ == "__main__":
     start_time = time.time()
 
     # Parameters
-    num_of_agents = 6
-    num_of_features = 3
-    std = 0.2
-    search_width = 10
 
-    num_of_simulations = 40
+    params = {'agents': 6,
+              'features': 5,
+              'common_features': 3,
+              'std': 0.2,
+              'search_width': 10}
+
+    loop = ('agents', list(range(6, 110, 25)))
+
+    num_of_simulations = 50
     num_of_steps = 1000
 
-    create_kwargs = {'length': num_of_features}
-
     # Environment and simulation
-
     log_folder = 'multi_test_logs'
     shutil.rmtree(log_folder, ignore_errors=True)
 
-    for _ in range(num_of_simulations):
+    data_folder = 'multi_test_data'
+    avgs_folder = os.path.join(data_folder, 'averages')
+    shutil.rmtree(data_folder, ignore_errors=True)
+    os.makedirs(avgs_folder)
+    run_id = 0
 
-        menv = create_environment(num_of_slaves=4)
+    for val in loop[1]:
+        params[loop[0]] = val
+        create_kwargs = {'length': params['features']}
+        run_id += 1
+        path = os.path.join(data_folder, str(run_id))
+        os.makedirs(path)
 
-        active = True
+        for _ in range(num_of_simulations):
 
-        for _ in range(num_of_agents):
-            rules = []
+            menv = create_environment(num_of_slaves=4)
 
-            for i in range(num_of_features):
-                rules.append(RuleLeaf(DummyFeature(i), GaussianMapper(np.random.rand(), std)))
-            # rules.append(RuleLeaf(DummyFeature(0), GaussianMapper(0.4, std)))
-            # rules.append(RuleLeaf(DummyFeature(1), GaussianMapper(0.8, std)))
-            # rules.append(RuleLeaf(DummyFeature(2), GaussianMapper(0.1, std)))
+            active = True
 
-            # rule_weights = [0.1, 0.3, 0.6]
-            rule_weights = []
-            for _ in range(len(rules)):
-                rule_weights.append(np.random.random())
+            for _ in range(params['agents']):
+                rules = []
 
-            ret = aiomas.run(until=menv.spawn('agents:MultiAgent',
-                                              log_folder=log_folder,
-                                              artifact_cls=DummyArtifact,
-                                              create_kwargs=create_kwargs,
-                                              rules=rules,
-                                              rule_weights=rule_weights,
-                                              std=std,
-                                              active=active,
-                                              search_width=search_width))
-            print(ret)
-            if active:
-                active_folder = run(ret[0].get_log_folder())
-            active = False
+                for i in range(params['features']):
+                    rules.append(RuleLeaf(DummyFeature(i), GaussianMapper(np.random.rand(), params['std'])))
+                # rules.append(RuleLeaf(DummyFeature(0), GaussianMapper(0.4, std)))
+                # rules.append(RuleLeaf(DummyFeature(1), GaussianMapper(0.8, std)))
+                # rules.append(RuleLeaf(DummyFeature(2), GaussianMapper(0.1, std)))
 
-        # Connect everyone to the main agent
-        G = nx.Graph()
-        G.add_nodes_from(list(range(num_of_agents)))
-        edges = [(0, x) for x in range(1, num_of_agents)]
-        G.add_edges_from(edges)
+                # rule_weights = [0.1, 0.3, 0.6]
+                rule_weights = []
+                for _ in range(len(rules)):
+                    rule_weights.append(np.random.random())
 
-        cnx.connections_from_graph(menv, G)
+                ret = aiomas.run(until=menv.spawn('agents:MultiAgent',
+                                                  log_folder=log_folder,
+                                                  data_folder=path,
+                                                  artifact_cls=DummyArtifact,
+                                                  create_kwargs=create_kwargs,
+                                                  rules=rules,
+                                                  rule_weights=rule_weights,
+                                                  std=params['std'],
+                                                  active=active,
+                                                  search_width=params['search_width']))
+                print(ret)
+                active = False
 
-        sim = Simulation(menv, log_folder=log_folder)
-        sim.async_steps(num_of_steps)
-        sim.end()
+            # Connect everyone to the main agent
+            G = nx.Graph()
+            G.add_nodes_from(list(range(params['agents'])))
+            edges = [(0, x) for x in range(1, params['agents'])]
+            G.add_edges_from(edges)
+
+            cnx.connections_from_graph(menv, G)
+
+            sim = Simulation(menv, log_folder=log_folder)
+            sim.async_steps(num_of_steps)
+            sim.end()
+
+        avg_stats = calculate_averages(path)
+        title = 'Connections: {}, features: {}, search width: {}, runs: {}' \
+            .format(params['agents'] - 1, params['features'], params['search_width'], num_of_simulations)
+        create_graphs(path, 10, title, '{}_{}.png'.format(loop[0], val), avg_stats)
+        pickle.dump(avg_stats, open(os.path.join(avgs_folder, 'avgs{}.p'.format(run_id)), 'wb'))
 
     print('Run took {}s'.format(int(np.around(time.time() - start_time))))
-    title = 'Connections: {}, features: {}, search width: {}, runs: {}'\
-        .format(num_of_agents - 1, num_of_features, search_width, num_of_simulations)
-    create_graphs(active_folder, 10, title)
+    create_param_graph(avgs_folder, data_folder, loop[0], loop[1], ['sgd', 'linear', 'bandit'])
