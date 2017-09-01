@@ -120,7 +120,7 @@ def create_graphs(folder, window_size, title, file_name, stats):
     #              title)
 
 def create_param_graph(avgs_folder, save_folder, param_name, param_vals, models):
-    files = os.listdir(avgs_folder)
+    files = list(sorted(os.listdir(avgs_folder)))
     random_rewards = []
 
     rewards = {}
@@ -129,16 +129,18 @@ def create_param_graph(avgs_folder, save_folder, param_name, param_vals, models)
 
     for file in files:
         stats = pickle.load(open(os.path.join(avgs_folder, file), 'rb'))
-        max_reward = stats['max_rewards'][-1]
+        max_reward = np.sum(stats['max_rewards'])
         for model in models:
-            rewards[model].append(stats[model]['rewards'][-1] / max_reward)
-        random_rewards.append(stats['random_rewards'][-1] / max_reward)
+            rewards[model].append(np.sum(stats[model]['rewards']) / max_reward)
+        random_rewards.append(np.sum(stats['random_rewards']) / max_reward)
 
     for model in models:
         plt.plot(param_vals, rewards[model], label=model)
 
     plt.plot(param_vals, random_rewards, label='random')
     plt.legend()
+    plt.xlabel(param_name)
+    plt.ylabel('Reward %')
     plt.savefig(os.path.join(save_folder, '{}.png'.format(param_name)))
     plt.close()
 
@@ -150,11 +152,11 @@ if __name__ == "__main__":
 
     params = {'agents': 6,
               'features': 5,
-              'common_features': 3,
+              'common_features': 5,
               'std': 0.2,
               'search_width': 10}
 
-    loop = ('agents', list(range(6, 110, 25)))
+    loop = ('common_features', list(range(1, 6)))
 
     num_of_simulations = 50
     num_of_steps = 1000
@@ -196,16 +198,29 @@ if __name__ == "__main__":
                 for _ in range(len(rules)):
                     rule_weights.append(np.random.random())
 
-                ret = aiomas.run(until=menv.spawn('agents:MultiAgent',
-                                                  log_folder=log_folder,
-                                                  data_folder=path,
-                                                  artifact_cls=DummyArtifact,
-                                                  create_kwargs=create_kwargs,
-                                                  rules=rules,
-                                                  rule_weights=rule_weights,
-                                                  std=params['std'],
-                                                  active=active,
-                                                  search_width=params['search_width']))
+                if active:
+                    # active agent only uses common_features number of the rules
+                    ret = aiomas.run(until=menv.spawn('agents:MultiAgent',
+                                                      log_folder=log_folder,
+                                                      data_folder=path,
+                                                      artifact_cls=DummyArtifact,
+                                                      create_kwargs=create_kwargs,
+                                                      rules=rules[:params['common_features']],
+                                                      rule_weights=rule_weights[:params['common_features']],
+                                                      std=params['std'],
+                                                      active=active,
+                                                      search_width=params['search_width']))
+                else:
+                    ret = aiomas.run(until=menv.spawn('agents:MultiAgent',
+                                                      log_folder=log_folder,
+                                                      data_folder=path,
+                                                      artifact_cls=DummyArtifact,
+                                                      create_kwargs=create_kwargs,
+                                                      rules=rules,
+                                                      rule_weights=rule_weights,
+                                                      std=params['std'],
+                                                      active=active,
+                                                      search_width=params['search_width']))
                 print(ret)
                 active = False
 
@@ -228,4 +243,4 @@ if __name__ == "__main__":
         pickle.dump(avg_stats, open(os.path.join(avgs_folder, 'avgs{}.p'.format(run_id)), 'wb'))
 
     print('Run took {}s'.format(int(np.around(time.time() - start_time))))
-    create_param_graph(avgs_folder, data_folder, loop[0], loop[1], ['sgd', 'linear', 'bandit'])
+    create_param_graph(avgs_folder, data_folder, loop[0], loop[1], ['sgd', 'bandit', 'linear' 'poly'])
