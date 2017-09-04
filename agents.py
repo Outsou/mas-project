@@ -190,7 +190,8 @@ class MultiAgent(FeatureAgent):
     Used for testing and comparing different modeling methods.
     An artifact is evaluated with a weighed sum of its features' distances from the preferred values.
     The distance is calculated using a gaussian distribution's pdf.'''
-    def __init__(self, environment, std, data_folder, active=False, *args, **kwargs):
+    def __init__(self, environment, std, data_folder, active=False,
+                 rule_vec=None, weight_vec=None, *args, **kwargs):
         '''
         :param std:
             Standard deviation for the gaussian distribution used in evaluation.
@@ -211,6 +212,16 @@ class MultiAgent(FeatureAgent):
                       'opinions': []}
         self.learner = None
         self.data_folder = data_folder
+
+        if rule_vec is not None:
+            assert len(rule_vec) == len(self.R), \
+                'Length of rule_vec differs from the amount of rules.'
+        if weight_vec is not None:
+            assert len(weight_vec) == len(self.W), \
+                'Length of weight_vec differs from the amount of weights.'
+
+        self.rule_vec = rule_vec
+        self.weight_vec = weight_vec
 
     def get_features(self, artifact):
         '''Return objective values for features without mapping.'''
@@ -255,6 +266,14 @@ class MultiAgent(FeatureAgent):
         self.age += 1
 
         if not self.active:
+            # Change rules and weights
+            # TODO rule update
+            if self.weight_vec is not None:
+                for i in range(len(self.weight_vec)):
+                    self._W[i] += self.weight_vec[i]
+                    if not 0 <= self._W[i] <= 1:
+                        self._W[i] = np.clip(self.W[i], 0, 1)
+                        self.weight_vec[i] = -self.weight_vec[i]
             return
 
         # Create an artifact

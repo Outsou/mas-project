@@ -154,11 +154,12 @@ if __name__ == "__main__":
               'features': 5,
               'common_features': 5,
               'std': 0.2,
-              'search_width': 10}
+              'search_width': 10,
+              'change_speed': 1}
 
     loop = ('common_features', list(range(1, 6)))
 
-    num_of_simulations = 50
+    num_of_simulations = 5
     num_of_steps = 1000
 
     # Environment and simulation
@@ -211,6 +212,9 @@ if __name__ == "__main__":
                                                       active=active,
                                                       search_width=params['search_width']))
                 else:
+                    weight_vec = np.ones(len(rules))
+                    weight_vec /= np.linalg.norm(weight_vec)
+                    weight_vec = params['change_speed'] * weight_vec
                     ret = aiomas.run(until=menv.spawn('agents:MultiAgent',
                                                       log_folder=log_folder,
                                                       data_folder=path,
@@ -220,7 +224,8 @@ if __name__ == "__main__":
                                                       rule_weights=rule_weights,
                                                       std=params['std'],
                                                       active=active,
-                                                      search_width=params['search_width']))
+                                                      search_width=params['search_width'],
+                                                      weight_vec=weight_vec))
                 print(ret)
                 active = False
 
@@ -243,4 +248,4 @@ if __name__ == "__main__":
         pickle.dump(avg_stats, open(os.path.join(avgs_folder, 'avgs{}.p'.format(run_id)), 'wb'))
 
     print('Run took {}s'.format(int(np.around(time.time() - start_time))))
-    create_param_graph(avgs_folder, data_folder, loop[0], loop[1], ['sgd', 'bandit', 'linear' 'poly'])
+    create_param_graph(avgs_folder, data_folder, loop[0], loop[1], ['sgd', 'bandit', 'linear', 'poly'])
