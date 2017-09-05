@@ -1,6 +1,8 @@
 '''This module contains different types of agents.'''
 
 from creamas.rules.agent import RuleAgent
+from creamas.rules.rule import RuleLeaf
+from creamas.mappers import GaussianMapper
 from creamas.math import gaus_pdf
 
 import logging
@@ -191,12 +193,14 @@ class MultiAgent(FeatureAgent):
     An artifact is evaluated with a weighed sum of its features' distances from the preferred values.
     The distance is calculated using a gaussian distribution's pdf.'''
     def __init__(self, environment, std, data_folder, active=False,
-                 rule_vec=None, weight_vec=None, *args, **kwargs):
+                 rule_vec=None, *args, **kwargs):
         '''
         :param std:
             Standard deviation for the gaussian distribution used in evaluation.
         :param active:
             Agent acts only if it is active.
+        :param rule_vec:
+            Controls the change in agent's preferences. Is added to centroids each step.
         '''
         super().__init__(environment, *args, **kwargs)
         self.std = std
@@ -216,12 +220,8 @@ class MultiAgent(FeatureAgent):
         if rule_vec is not None:
             assert len(rule_vec) == len(self.R), \
                 'Length of rule_vec differs from the amount of rules.'
-        if weight_vec is not None:
-            assert len(weight_vec) == len(self.W), \
-                'Length of weight_vec differs from the amount of weights.'
 
         self.rule_vec = rule_vec
-        self.weight_vec = weight_vec
 
     def get_features(self, artifact):
         '''Return objective values for features without mapping.'''
@@ -266,14 +266,17 @@ class MultiAgent(FeatureAgent):
         self.age += 1
 
         if not self.active:
-            # Change rules and weights
-            # TODO rule update
-            if self.weight_vec is not None:
-                for i in range(len(self.weight_vec)):
-                    self._W[i] += self.weight_vec[i]
-                    if not 0 <= self._W[i] <= 1:
-                        self._W[i] = np.clip(self.W[i], 0, 1)
-                        self.weight_vec[i] = -self.weight_vec[i]
+            # Update means for rules
+            for i in range(len(self.R)):
+                mean = self.R[i].mapper._mean + self.rule_vec[i]
+
+                # Make sure mean stays in range
+                if not 0 <= mean <= 1:
+                    mean = np.clip(mean, 0, 1)
+                    # Flip change direction
+                    self.rule_vec[i] = -self.rule_vec[i]
+
+                self._R[i] = RuleLeaf(self.R[i].feat, GaussianMapper(mean, self.std))
             return
 
         # Create an artifact

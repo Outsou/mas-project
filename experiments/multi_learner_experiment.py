@@ -134,10 +134,11 @@ def create_param_graph(avgs_folder, save_folder, param_name, param_vals, models)
             rewards[model].append(np.sum(stats[model]['rewards']) / max_reward)
         random_rewards.append(np.sum(stats['random_rewards']) / max_reward)
 
+    plt.plot(param_vals, random_rewards, label='random')
+
     for model in models:
         plt.plot(param_vals, rewards[model], label=model)
 
-    plt.plot(param_vals, random_rewards, label='random')
     plt.legend()
     plt.xlabel(param_name)
     plt.ylabel('Reward %')
@@ -155,11 +156,11 @@ if __name__ == "__main__":
               'common_features': 5,
               'std': 0.2,
               'search_width': 10,
-              'change_speed': 1}
+              'change_speed': 0.1}
 
-    loop = ('common_features', list(range(1, 6)))
+    loop = ('change_speed', [0.001, 0.005])
 
-    num_of_simulations = 5
+    num_of_simulations = 50
     num_of_steps = 1000
 
     # Environment and simulation
@@ -212,9 +213,8 @@ if __name__ == "__main__":
                                                       active=active,
                                                       search_width=params['search_width']))
                 else:
-                    weight_vec = np.ones(len(rules))
-                    weight_vec /= np.linalg.norm(weight_vec)
-                    weight_vec = params['change_speed'] * weight_vec
+                    # Generate a rule vec with negative and positive change_speed elements
+                    rule_vec = np.random.choice([-params['change_speed'], params['change_speed']], params['features'])
                     ret = aiomas.run(until=menv.spawn('agents:MultiAgent',
                                                       log_folder=log_folder,
                                                       data_folder=path,
@@ -225,7 +225,7 @@ if __name__ == "__main__":
                                                       std=params['std'],
                                                       active=active,
                                                       search_width=params['search_width'],
-                                                      weight_vec=weight_vec))
+                                                      rule_vec=rule_vec))
                 print(ret)
                 active = False
 
