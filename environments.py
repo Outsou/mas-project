@@ -9,6 +9,11 @@ import aiomas
 class StatEnvironment(MultiEnvironment):
     '''A MultiEnvironment that can collect stats from agents.'''
 
+    def cause_change(self, amount):
+        agents = self.get_agents(addr=False)
+        for agent in agents:
+            run(agent.cause_change(amount))
+
     def get_connection_counts(self):
         return self.get_dictionary('get_connection_counts')
 

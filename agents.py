@@ -240,6 +240,17 @@ class MultiAgent(FeatureAgent):
         return rets
 
     @aiomas.expose
+    def cause_change(self, amount):
+        for i in range(len(self.R)):
+            mean = self.R[i].mapper._mean
+            if mean <= 0.5:
+                mean += amount
+            else:
+                mean -= amount
+            mean = np.clip(mean, 0, 1)
+            self._R[i] = RuleLeaf(self.R[i].feat, GaussianMapper(mean, self.std))
+
+    @aiomas.expose
     async def act(self):
         '''If active, create an artifact and send it to everyone for evaluation.
         Update models based on the evaluation received from the connection chosen by the model.'''

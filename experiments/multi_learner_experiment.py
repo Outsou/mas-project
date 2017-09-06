@@ -71,13 +71,13 @@ def create_graphs(folder, window_size, title, file_name, stats):
             if i + window_size - 1 > last_idx:
                 break
 
-            maximum = np.sum(maximums[0:i + window_size])
+            maximum = np.sum(maximums[i:i + window_size])
 
             for model in models:
-                model_sums[model[0]].append(np.sum(model[1][0:i + window_size]) / maximum)
+                model_sums[model[0]].append(np.sum(model[1][i:i + window_size]) / maximum)
 
             if random is not None:
-                random_reward = np.sum(random[0:i + window_size])
+                random_reward = np.sum(random[i:i + window_size])
                 random_sums.append(random_reward / maximum)
 
             i += window_size
@@ -102,8 +102,8 @@ def create_graphs(folder, window_size, title, file_name, stats):
     # Create reward graph
     models = [('SGD', stats['sgd']['rewards']),
               ('Q', stats['bandit']['rewards']),
-              ('linear', stats['linear']['rewards']),
-              ('poly', stats['poly']['rewards'])]
+              ('linear', stats['linear']['rewards'])]
+              #('poly', stats['poly']['rewards'])]
 
     create_graph(models,
                  stats['max_rewards'],
@@ -151,14 +151,18 @@ if __name__ == "__main__":
 
     # Parameters
 
-    params = {'agents': 6,
-              'features': 5,
-              'common_features': 5,
-              'std': 0.2,
-              'search_width': 10,
-              'change_speed': 0.1}
+    params = {
+        'agents': 6,
+        'features': 5,
+        'common_features': 5,   # How many features the creator agent observes
+        'std': 0.2,             # Standard deviation for preferences
+        'search_width': 10,
+        'change_speed': 0.001,  # How fast preferences change continuously
+        'instant_steps': 500,   # How often instant preference change happens
+        'instant_amount': 0.5   # Amount of change in instant change
+    }
 
-    loop = ('change_speed', [0.001, 0.005])
+    loop = ('instant_amount', [0.1, 0.3, 0.5])
 
     num_of_simulations = 50
     num_of_steps = 1000
@@ -238,7 +242,13 @@ if __name__ == "__main__":
             cnx.connections_from_graph(menv, G)
 
             sim = Simulation(menv, log_folder=log_folder)
-            sim.async_steps(num_of_steps)
+
+            for i in range(num_of_steps):
+                if i % params['instant_steps'] == 0:
+                    menv.cause_change(params['instant_amount'])
+                sim.async_step()
+
+
             sim.end()
 
         avg_stats = calculate_averages(path)
@@ -248,4 +258,4 @@ if __name__ == "__main__":
         pickle.dump(avg_stats, open(os.path.join(avgs_folder, 'avgs{}.p'.format(run_id)), 'wb'))
 
     print('Run took {}s'.format(int(np.around(time.time() - start_time))))
-    create_param_graph(avgs_folder, data_folder, loop[0], loop[1], ['sgd', 'bandit', 'linear', 'poly'])
+    create_param_graph(avgs_folder, data_folder, loop[0], loop[1], ['sgd', 'bandit', 'linear'])
