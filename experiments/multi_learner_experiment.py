@@ -71,13 +71,13 @@ def create_graphs(folder, window_size, title, file_name, stats):
             if i + window_size - 1 > last_idx:
                 break
 
-            maximum = np.sum(maximums[i:i + window_size])
+            maximum = np.sum(maximums[0:i + window_size])
 
             for model in models:
-                model_sums[model[0]].append(np.sum(model[1][i:i + window_size]) / maximum)
+                model_sums[model[0]].append(np.sum(model[1][0:i + window_size]) / maximum)
 
             if random is not None:
-                random_reward = np.sum(random[i:i + window_size])
+                random_reward = np.sum(random[0:i + window_size])
                 random_sums.append(random_reward / maximum)
 
             i += window_size
@@ -157,19 +157,21 @@ if __name__ == "__main__":
         'common_features': 5,   # How many features the creator agent observes
         'std': 0.2,             # Standard deviation for preferences
         'search_width': 10,
-        'change_speed': 0.001,  # How fast preferences change continuously
-        'instant_steps': 500,   # How often instant preference change happens
-        'instant_amount': 0.5   # Amount of change in instant change
+        'change_speed': 0,      # How fast preferences change continuously
+        'instant_steps': 5000,   # How often instant preference change happens
+        'instant_amount': 0.5,   # Amount of change in instant change
+        'reg_weight': 0
     }
 
-    loop = ('instant_amount', [0.1, 0.3, 0.5])
+    loop = ('reg_weight', [0.1, 0.5, 0.9])
 
     num_of_simulations = 50
     num_of_steps = 1000
 
     # Environment and simulation
-    log_folder = 'multi_test_logs'
-    shutil.rmtree(log_folder, ignore_errors=True)
+    # log_folder = 'multi_test_logs'
+    log_folder = None
+    #shutil.rmtree(log_folder, ignore_errors=True)
 
     data_folder = 'multi_test_data'
     avgs_folder = os.path.join(data_folder, 'averages')
@@ -215,7 +217,8 @@ if __name__ == "__main__":
                                                       rule_weights=rule_weights[:params['common_features']],
                                                       std=params['std'],
                                                       active=active,
-                                                      search_width=params['search_width']))
+                                                      search_width=params['search_width'],
+                                                      reg_weight=params['reg_weight']))
                 else:
                     # Generate a rule vec with negative and positive change_speed elements
                     rule_vec = np.random.choice([-params['change_speed'], params['change_speed']], params['features'])

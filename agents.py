@@ -193,7 +193,7 @@ class MultiAgent(FeatureAgent):
     An artifact is evaluated with a weighed sum of its features' distances from the preferred values.
     The distance is calculated using a gaussian distribution's pdf.'''
     def __init__(self, environment, std, data_folder, active=False,
-                 rule_vec=None, *args, **kwargs):
+                 rule_vec=None, reg_weight=0.1, *args, **kwargs):
         '''
         :param std:
             Standard deviation for the gaussian distribution used in evaluation.
@@ -216,6 +216,7 @@ class MultiAgent(FeatureAgent):
                       'opinions': []}
         self.learner = None
         self.data_folder = data_folder
+        self.reg_weight = reg_weight
 
         if rule_vec is not None:
             assert len(rule_vec) == len(self.R), \
@@ -235,12 +236,15 @@ class MultiAgent(FeatureAgent):
         rets = super().add_connections(conns)
 
         # Initialize the multi-model learner
-        self.learner = MultiAgent.MultiLearner(list(self.connections), len(self.R), self.std)
+        self.learner = MultiAgent.MultiLearner(list(self.connections), len(self.R), self.std, reg_weight=self.reg_weight)
 
         return rets
 
     @aiomas.expose
     def cause_change(self, amount):
+        if self.active:
+            return
+
         for i in range(len(self.R)):
             mean = self.R[i].mapper._mean
             if mean <= 0.5:
@@ -393,7 +397,7 @@ class MultiAgent(FeatureAgent):
         Currently implemented:
         stochastic gradient descent (SGD),
         Q-learning for n-armed bandit problem'''
-        def __init__(self, addrs, num_of_features, std, centroid_rate=200, weight_rate=0.2, e=0.2):
+        def __init__(self, addrs, num_of_features, std, centroid_rate=200, weight_rate=0.2, e=0.2, reg_weight=0.5):
             '''
             :param addrs:
                 Addresses of the agents that are modeled.
@@ -411,6 +415,7 @@ class MultiAgent(FeatureAgent):
             self.num_of_features = num_of_features
             self.std = std
             self.e = e
+            self.reg_weight = reg_weight
 
             # Get length of the polynomial transform
             poly_len = len(self._poly_transform(np.zeros(num_of_features)))
@@ -487,7 +492,8 @@ class MultiAgent(FeatureAgent):
             error = true_value - estimate
 
             # Update weights
-            gradient = vals * error
+            regularizer = self.sgd_weights[addr] * 2 * self.reg_weight
+            gradient = vals * error - regularizer
             self.sgd_weights[addr] += self.weight_rate * gradient
             self.sgd_weights[addr] = np.clip(self.sgd_weights[addr], 0, 1)
 
@@ -503,7 +509,8 @@ class MultiAgent(FeatureAgent):
         def update_linear_regression(self, true_value, addr, features):
             feature_vec = np.append(features, 1)
             error = true_value - np.sum(self.linear_weights[addr] * feature_vec)
-            gradient = feature_vec * error
+            regularizer = self.linear_weights[addr] * 2 * self.reg_weight
+            gradient = feature_vec * error - regularizer
             self.linear_weights[addr] += self.weight_rate * gradient
 
         def update_poly(self, true_value, addr, features):
