@@ -142,10 +142,9 @@ class FeatureAgent(RuleAgent):
 
 
     class STMemory:
-
         '''Agent's short-term memory model using a simple list which stores
         artifacts as is.'''
-        def __init__(self, artifact_cls, length, max_distance, max_length = 100):
+        def __init__(self, artifact_cls, length, max_distance, max_length=100):
             self.length = length
             self.artifacts = []
             self.max_length = max_length
@@ -188,19 +187,24 @@ class FeatureAgent(RuleAgent):
 
 
 class MultiAgent(FeatureAgent):
-    '''An agent that learns multiple models at the same time.
+    """An agent that learns multiple models at the same time.
     Used for testing and comparing different modeling methods.
-    An artifact is evaluated with a weighed sum of its features' distances from the preferred values.
-    The distance is calculated using a gaussian distribution's pdf.'''
+    An artifact is evaluated with a weighed sum of its features' distances from
+    the preferred values. The distance is calculated using a gaussian
+    distribution's pdf.
+    """
     def __init__(self, environment, std, data_folder, active=False,
-                 rule_vec=None, reg_weight=0.1, *args, **kwargs):
+                 rule_vec=None, reg_weight=0.1, gaussian_updates=False,
+                 *args, **kwargs):
         '''
         :param std:
             Standard deviation for the gaussian distribution used in evaluation.
-        :param active:
+        :param bool active:
             Agent acts only if it is active.
         :param rule_vec:
             Controls the change in agent's preferences. Is added to centroids each step.
+        :param bool gaussian_updates:
+            True if agent preferences are updated drawing from Gaussian distributions.
         '''
         super().__init__(environment, *args, **kwargs)
         self.std = std
@@ -217,12 +221,14 @@ class MultiAgent(FeatureAgent):
         self.learner = None
         self.data_folder = data_folder
         self.reg_weight = reg_weight
+        self.gaussian_updates = gaussian_updates
 
         if rule_vec is not None:
             assert len(rule_vec) == len(self.R), \
                 'Length of rule_vec differs from the amount of rules.'
 
         self.rule_vec = rule_vec
+        self.gaussian_updates = gaussian_updates
 
     def get_features(self, artifact):
         '''Return objective values for features without mapping.'''
@@ -236,7 +242,10 @@ class MultiAgent(FeatureAgent):
         rets = super().add_connections(conns)
 
         # Initialize the multi-model learner
-        self.learner = MultiAgent.MultiLearner(list(self.connections), len(self.R), self.std, reg_weight=self.reg_weight)
+        self.learner = MultiAgent.MultiLearner(list(self.connections),
+                                               len(self.R),
+                                               self.std,
+                                               reg_weight=self.reg_weight)
 
         return rets
 
@@ -254,10 +263,31 @@ class MultiAgent(FeatureAgent):
             mean = np.clip(mean, 0, 1)
             self._R[i] = RuleLeaf(self.R[i].feat, GaussianMapper(mean, self.std))
 
+    def update_means(self):
+        """Update means for rules
+        """
+        for i in range(len(self.R)):
+            if self.gaussian_updates:
+                mean = self.R[i].mapper._mean + np.random.normal(0.0, self.rule_vec[i])
+                mean = np.clip(mean, 0, 1)
+            else:
+                mean = self.R[i].mapper._mean + self.rule_vec[i]
+
+                # Make sure mean stays in range
+                if not 0 <= mean <= 1:
+                    mean = np.clip(mean, 0, 1)
+                    # Flip change direction
+                    self.rule_vec[i] = -self.rule_vec[i]
+
+            self._R[i] = RuleLeaf(self.R[i].feat,
+                                  GaussianMapper(mean, self.std))
+
     @aiomas.expose
     async def act(self):
-        '''If active, create an artifact and send it to everyone for evaluation.
-        Update models based on the evaluation received from the connection chosen by the model.'''
+        """If active, create an artifact and send it to everyone for evaluation.
+        Update models based on the evaluation received from the connection
+        chosen by the model.
+        """
         def record_stats(key, addr, reward, chose_best):
             '''
             Used to record stats at each step.
@@ -281,17 +311,7 @@ class MultiAgent(FeatureAgent):
         self.age += 1
 
         if not self.active:
-            # Update means for rules
-            for i in range(len(self.R)):
-                mean = self.R[i].mapper._mean + self.rule_vec[i]
-
-                # Make sure mean stays in range
-                if not 0 <= mean <= 1:
-                    mean = np.clip(mean, 0, 1)
-                    # Flip change direction
-                    self.rule_vec[i] = -self.rule_vec[i]
-
-                self._R[i] = RuleLeaf(self.R[i].feat, GaussianMapper(mean, self.std))
+            self.update_means()
             return
 
         # Create an artifact
@@ -393,21 +413,23 @@ class MultiAgent(FeatureAgent):
         self._log(logging.INFO, 'Bandit perceived as best: ' + max(self.learner.bandits, key=self.learner.bandits.get))
 
     class MultiLearner():
-        '''A learner that is capable of using and updating multiple models.
+        """A learner that is capable of using and updating multiple models.
+
         Currently implemented:
         stochastic gradient descent (SGD),
-        Q-learning for n-armed bandit problem'''
+        Q-learning for n-armed bandit problem
+        """
         def __init__(self, addrs, num_of_features, std, centroid_rate=200, weight_rate=0.2, e=0.2, reg_weight=0.5):
             '''
-            :param addrs:
+            :param list addrs:
                 Addresses of the agents that are modeled.
-            :param num_of_features:
+            :param int num_of_features:
                 Number of features in an artifact.
-            :param std:
+            :param float std:
                 Standard deviation for evaluating artifacts.
-            :param centroid_rate:
+            :param float centroid_rate:
                 Learning rate for centroids.
-            :param weight_rate:
+            :param float weight_rate:
                 Learning rate for weights.
             '''
             self.centroid_rate = centroid_rate
@@ -584,7 +606,8 @@ class MultiAgent(FeatureAgent):
             if np.random.random() < self.e:
                 return np.random.choice(list(self.linear_weights.keys()))
 
-            best_estimate = -1
+            # TODO: Why not get the best estimate from the first candidate?
+            best_estimate = -10000000
             best_addr = None
             feature_vec = np.append(features, 1)
 
@@ -595,3 +618,7 @@ class MultiAgent(FeatureAgent):
                     best_addr = addr
 
             return best_addr
+
+
+class MultiAgent2(MultiAgent):
+    pass
