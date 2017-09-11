@@ -54,7 +54,7 @@ def calculate_averages(folder):
     return avg_stats
 
 
-def create_graphs(folder, window_size, title, file_name, stats):
+def create_graphs(folder, window_size, title, file_name, stats, draw_windows=False):
     def create_graph(models, maximums, ylabel, title, random=None):
         x = []
         last_idx = len(models[0][1]) - 1
@@ -71,13 +71,18 @@ def create_graphs(folder, window_size, title, file_name, stats):
             if i + window_size - 1 > last_idx:
                 break
 
-            maximum = np.sum(maximums[0:i + window_size])
+            if draw_windows:
+                window_start = i
+            else:
+                window_start = 0
+
+            maximum = np.sum(maximums[window_start:i + window_size])
 
             for model in models:
-                model_sums[model[0]].append(np.sum(model[1][0:i + window_size]) / maximum)
+                model_sums[model[0]].append(np.sum(model[1][window_start:i + window_size]) / maximum)
 
             if random is not None:
-                random_reward = np.sum(random[0:i + window_size])
+                random_reward = np.sum(random[window_start:i + window_size])
                 random_sums.append(random_reward / maximum)
 
             i += window_size
@@ -146,27 +151,29 @@ def create_param_graph(avgs_folder, save_folder, param_name, param_vals, models)
     plt.close()
 
 
-if __name__ == "__main__":
-    start_time = time.time()
+def run_experiment(params, loop, num_of_simulations, num_of_steps, draw_windows=False):
 
-    # Parameters
-
-    params = {
+    # Default values
+    defaults = {
         'agents': 6,
         'features': 5,
-        'common_features': 5,   # How many features the creator agent observes
-        'std': 0.2,             # Standard deviation for preferences
+        'common_features': 5,  # How many features the creator agent observes
+        'std': 0.2,  # Standard deviation for preferences
         'search_width': 10,
-        'change_speed': 0,      # How fast preferences change continuously
-        'instant_steps': 5000,   # How often instant preference change happens
-        'instant_amount': 0.5,   # Amount of change in instant change
+        'change_speed': 0,  # How fast preferences change continuously
+        'instant_steps': 500000,  # How often instant preference change happens
+        'instant_amount': 0,  # Amount of change in instant change
         'reg_weight': 0
     }
 
-    loop = ('reg_weight', [0.1, 0.5, 0.9])
+    if params is None:
+        params = defaults
+    else:
+        for key, value in defaults.items():
+            if key not in params:
+                params[key] = value
 
-    num_of_simulations = 50
-    num_of_steps = 1000
+    start_time = time.time()
 
     # Environment and simulation
     # log_folder = 'multi_test_logs'
@@ -257,7 +264,7 @@ if __name__ == "__main__":
         avg_stats = calculate_averages(path)
         title = 'Connections: {}, features: {}, search width: {}, runs: {}' \
             .format(params['agents'] - 1, params['features'], params['search_width'], num_of_simulations)
-        create_graphs(path, 10, title, '{}_{}.png'.format(loop[0], val), avg_stats)
+        create_graphs(path, 10, title, '{}_{}.png'.format(loop[0], val), avg_stats, draw_windows)
         pickle.dump(avg_stats, open(os.path.join(avgs_folder, 'avgs{}.p'.format(run_id)), 'wb'))
 
     print('Run took {}s'.format(int(np.around(time.time() - start_time))))
