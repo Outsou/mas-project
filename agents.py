@@ -606,12 +606,12 @@ class MultiAgent(FeatureAgent):
             if np.random.random() < self.e:
                 return np.random.choice(list(self.linear_weights.keys()))
 
-            # TODO: Why not get the best estimate from the first candidate?
-            best_estimate = -10000000
-            best_addr = None
+            addrs = list(self.linear_weights.keys())
             feature_vec = np.append(features, 1)
+            best_estimate = np.sum(self.linear_weights[addrs[0]] * feature_vec)
+            best_addr = addrs[0]
 
-            for addr in self.linear_weights.keys():
+            for addr in addrs[1:]:
                 estimate = np.sum(self.linear_weights[addr] * feature_vec)
                 if estimate > best_estimate:
                     best_estimate = estimate
