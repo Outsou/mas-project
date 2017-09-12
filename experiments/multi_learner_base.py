@@ -19,21 +19,34 @@ import os
 import matplotlib.pyplot as plt
 import shutil
 import time
+import itertools
+import operator
 
 
-def calculate_averages(folder):
+def calculate_averages(folder, models):
     '''Calculates average stats from stat files in folder.'''
-    keys_to_avg = [('sgd', 'rewards'), ('sgd', 'chose_best'),
-                   ('bandit', 'rewards'), ('bandit', 'chose_best'),
-                   ('linear', 'rewards'), ('linear', 'chose_best'),
-                   ('poly', 'rewards'), ('poly', 'chose_best'),
-                   'random_rewards', 'max_rewards']
+    def calculate_same_picks(combinations, stats):
+
+        for combination in combinations:
+            picks1 = stats[combination[0]]['connections']
+            picks2 = stats[combination[1]]['connections']
+            np.sum(np.equal(picks1, picks2))
+
+    keys_to_avg = ['random_rewards', 'max_rewards']
+
+    for model in models:
+        keys_to_avg.append((model, 'rewards'))
+        keys_to_avg.append((model, 'chose_best'))
+
+    model_combinations = list(itertools.combinations(models, 2))
 
     files = os.listdir(folder)
     first_stats = pickle.load(open(os.path.join(folder, files[0]), 'rb'))
     avg_mul = 1 / len(files)
     avg_stats = {}
+    avg_stats['same_picks'] = {}
 
+    # Initialize avg stats with the first stat file
     for key in keys_to_avg:
         if type(key) is tuple:
             if key[0] not in avg_stats:
@@ -42,20 +55,49 @@ def calculate_averages(folder):
         else:
             avg_stats[key] = np.array(first_stats[key]) * avg_mul
 
+    # Calculate how many common choices were made by all models
+    choices = []
+    for model in models:
+        choices.append(first_stats[model]['connections'])
+    all_choices = list(zip(*choices))
+    common_choice_count = np.sum(list(map(lambda x: len(set(x)) == 1, all_choices)))
+    avg_stats['same_picks']['all'] = common_choice_count * avg_mul
+
+    # Calculate how many common choices were made by model pairs
+    for combination in model_combinations:
+        picks1 = np.array(first_stats[combination[0]]['connections'])
+        picks2 = np.array(first_stats[combination[1]]['connections'])
+        avg_stats['same_picks']['/'.join(combination)] = np.sum(picks1 == picks2) * avg_mul
+
+    # Add the rest of the files to avg_stats
     for i in range(1, len(files)):
         stats = pickle.load(open(os.path.join(folder, files[i]), 'rb'))
 
         for key in keys_to_avg:
             if type(key) is tuple:
-                avg_stats[key[0]][key[1]] = avg_stats[key[0]][key[1]] + np.array(stats[key[0]][key[1]]) * avg_mul
+                avg_stats[key[0]][key[1]] += np.array(stats[key[0]][key[1]]) * avg_mul
             else:
-                avg_stats[key] = avg_stats[key] + np.array(stats[key]) * avg_mul
+                avg_stats[key] += np.array(stats[key]) * avg_mul
+
+        # Calculate how many common choices were made by all models
+        choices = []
+        for model in models:
+            choices.append(stats[model]['connections'])
+        all_choices = list(zip(*choices))
+        common_choice_count = np.sum(list(map(lambda x: len(set(x)) == 1, all_choices)))
+        avg_stats['same_picks']['all'] += common_choice_count * avg_mul
+
+        # Calculate how many common choices were made by model pairs
+        for combination in model_combinations:
+            picks1 = np.array(stats[combination[0]]['connections'])
+            picks2 = np.array(stats[combination[1]]['connections'])
+            avg_stats['same_picks']['/'.join(combination)] += np.sum(picks1 == picks2) * avg_mul
 
     return avg_stats
 
 
 def create_graphs(folder, window_size, title, file_name, stats, draw_windows=False):
-    def create_graph(models, maximums, ylabel, title, random=None):
+    def create_graph(models, maximums, ylabel, title, path, random=None):
         x = []
         last_idx = len(models[0][1]) - 1
 
@@ -100,8 +142,26 @@ def create_graphs(folder, window_size, title, file_name, stats, draw_windows=Fal
         plt.legend()
         plt.title(title)
         # plt.show()
-        path = os.path.split(folder)[0]
         plt.savefig(os.path.join(path, file_name))
+        plt.close()
+
+    def create_pick_graph(stats, path):
+        keys = []
+        values = []
+        for key, value in sorted(stats['same_picks'].items(), key=operator.itemgetter(0)):
+            keys.append(key)
+            values.append(value)
+
+        ind = np.arange(len(values))
+        width = 0.35
+        fig, ax = plt.subplots()
+        rects = ax.bar(ind, values, width)
+        ax.set_xticks(ind)
+        ax.set_xticklabels(keys)
+        #plt.show()
+        name_split = file_name.split('.')
+        name = name_split[0] + '_picks'
+        plt.savefig(os.path.join(path, name))
         plt.close()
 
     # Create reward graph
@@ -110,11 +170,16 @@ def create_graphs(folder, window_size, title, file_name, stats, draw_windows=Fal
               ('linear', stats['linear']['rewards'])]
               #('poly', stats['poly']['rewards'])]
 
+    path = os.path.split(folder)[0]
+
     create_graph(models,
                  stats['max_rewards'],
                  'Reward percentage',
                  title,
+                 path,
                  stats['random_rewards'])
+
+    create_pick_graph(stats, path)
 
     # Create optimal choices graph
     # create_graph(avg_stats['sgd']['chose_best'],
@@ -165,6 +230,8 @@ def run_experiment(params, loop, num_of_simulations, num_of_steps, draw_windows=
         'instant_amount': 0,  # Amount of change in instant change
         'reg_weight': 0
     }
+
+    models = ['sgd', 'bandit', 'linear']
 
     if params is None:
         params = defaults
@@ -261,11 +328,11 @@ def run_experiment(params, loop, num_of_simulations, num_of_steps, draw_windows=
 
             sim.end()
 
-        avg_stats = calculate_averages(path)
+        avg_stats = calculate_averages(path, models)
         title = 'Connections: {}, features: {}, search width: {}, runs: {}' \
             .format(params['agents'] - 1, params['features'], params['search_width'], num_of_simulations)
         create_graphs(path, 10, title, '{}_{}.png'.format(loop[0], val), avg_stats, draw_windows)
         pickle.dump(avg_stats, open(os.path.join(avgs_folder, 'avgs{}.p'.format(run_id)), 'wb'))
 
     print('Run took {}s'.format(int(np.around(time.time() - start_time))))
-    create_param_graph(avgs_folder, data_folder, loop[0], loop[1], ['sgd', 'bandit', 'linear'])
+    create_param_graph(avgs_folder, data_folder, loop[0], loop[1], models)
