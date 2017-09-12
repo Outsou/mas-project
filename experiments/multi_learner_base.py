@@ -151,7 +151,13 @@ def create_param_graph(avgs_folder, save_folder, param_name, param_vals, models)
     plt.close()
 
 
-def run_experiment(params, loop, num_of_simulations, num_of_steps, draw_windows=False):
+def run_experiment(params, loop, num_of_simulations, num_of_steps,
+                   draw_windows=False, report=True):
+    """Run experiment.
+
+    :param bool report:
+        Report about intermediate advances in experiment to the stdout.
+    """
 
     # Default values
     defaults = {
@@ -185,6 +191,7 @@ def run_experiment(params, loop, num_of_simulations, num_of_steps, draw_windows=
     shutil.rmtree(data_folder, ignore_errors=True)
     os.makedirs(avgs_folder)
     run_id = 0
+    times = []
 
     for val in loop[1]:
         params[loop[0]] = val
@@ -192,9 +199,11 @@ def run_experiment(params, loop, num_of_simulations, num_of_steps, draw_windows=
         run_id += 1
         path = os.path.join(data_folder, str(run_id))
         os.makedirs(path)
+        sim_id = 0
 
         for _ in range(num_of_simulations):
-
+            t1 = time.monotonic()
+            sim_id += 1
             menv = create_environment(num_of_slaves=4)
 
             active = True
@@ -240,7 +249,8 @@ def run_experiment(params, loop, num_of_simulations, num_of_steps, draw_windows=
                                                       active=active,
                                                       search_width=params['search_width'],
                                                       rule_vec=rule_vec))
-                print(ret)
+                if report:
+                    print(ret)
                 active = False
 
             # Connect everyone to the main agent
@@ -260,6 +270,24 @@ def run_experiment(params, loop, num_of_simulations, num_of_steps, draw_windows=
 
 
             sim.end()
+
+            # Add some printing to the end of the simulation to help
+            # gauge time for longer runs.
+            if report:
+                t2 = time.monotonic()
+                total_time = t2 - t1
+                times.append(total_time)
+                mean_time = np.mean(times)
+                runs_left = (len(loop[1]) - run_id) * num_of_simulations +\
+                            (num_of_simulations - sim_id)
+                est_end_time = time.ctime(time.time() + (mean_time * runs_left))
+                lr = str(len(str(run_id)))
+                ls = str(len(str(num_of_simulations)))
+                print(("Simulation setup {:0>"+lr+"}/{:0>"+lr+"} run "
+                       "{:0>"+ls+"}/{:0>"+ls+"} took {:.3f} seconds. "
+                       "Estimated end time at: {}")
+                      .format(run_id, len(loop[1]), sim_id, num_of_simulations,
+                              total_time, est_end_time))
 
         avg_stats = calculate_averages(path)
         title = 'Connections: {}, features: {}, search width: {}, runs: {}' \
