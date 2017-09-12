@@ -250,13 +250,58 @@ def create_param_graph(avgs_folder, save_folder, param_name, param_vals, models)
     plt.close()
 
 
-def run_experiment(params, loop, num_of_simulations, num_of_steps,
-                   draw_windows=False, report=True):
+def create_img_name(replace_params):
+    img_name = ""
+    for k, v in replace_params.items():
+        img_name += "{}={}".format(k, v)
+    img_name += ".png"
+    return img_name
+
+
+def _init_data_folder(data_folder):
+    """Initialize the data folder by deleting the existing folder and creating
+    new subfolder for averages.
+    """
+    avgs_folder = os.path.join(data_folder, 'averages')
+    shutil.rmtree(data_folder, ignore_errors=True)
+    os.makedirs(avgs_folder)
+    return avgs_folder
+
+
+def make_loop_matrix(params):
+    """Construct a product of available parameter lists to create a single loop
+    which executes every combination of parameter values.
+
+    This function naively assumes that values in params-dictionary that are
+    lists are supposed to be executed in different experiments.
+    """
+    in_loop = []
+    for k, v in params.items():
+        if type(v) == list:
+            in_loop.append((k, v))
+    import itertools
+    prods = list(itertools.product(*[e[1] for e in in_loop]))
+    loop = []
+    for p in prods:
+        s = {}
+        for i in range(len(p)):
+            s[in_loop[i][0]] = p[i]
+        loop.append(s)
+    return loop, len(in_loop)
+
+
+def run_experiment(params, num_of_simulations, num_of_steps,
+                   draw_windows=False, data_folder='multi_test_data',
+                   report=True):
     """Run experiment.
 
+    :param str data_folder:
+        Folder to store results to. Any existing files in the folder will be
+        cleared before the run!
     :param bool report:
         Report about intermediate advances in experiment to the stdout.
     """
+    import pprint
 
     # Default values
     defaults = {
@@ -286,16 +331,18 @@ def run_experiment(params, loop, num_of_simulations, num_of_steps,
     # log_folder = 'multi_test_logs'
     log_folder = None
     #shutil.rmtree(log_folder, ignore_errors=True)
+    avgs_folder = _init_data_folder(data_folder)
 
-    data_folder = 'multi_test_data'
-    avgs_folder = os.path.join(data_folder, 'averages')
-    shutil.rmtree(data_folder, ignore_errors=True)
-    os.makedirs(avgs_folder)
     run_id = 0
     times = []
 
-    for val in loop[1]:
-        params[loop[0]] = val
+    # Construct replacement parameters for the experiment matrix and save
+    # initial parameters.
+    loop, looping_params = make_loop_matrix(params)
+    old_params = params.copy()
+
+    for replace_params in loop:
+        params.update(replace_params)
         create_kwargs = {'length': params['features']}
         run_id += 1
         path = os.path.join(data_folder, str(run_id))
@@ -350,8 +397,6 @@ def run_experiment(params, loop, num_of_simulations, num_of_steps,
                                                       active=active,
                                                       search_width=params['search_width'],
                                                       rule_vec=rule_vec))
-                if report:
-                    print(ret)
                 active = False
 
             # Connect everyone to the main agent
@@ -364,11 +409,19 @@ def run_experiment(params, loop, num_of_simulations, num_of_steps,
 
             sim = Simulation(menv, log_folder=log_folder)
 
+            if report:
+                lr = str(len(str(run_id)))
+                ls = str(len(str(num_of_simulations)))
+                print(("Initialized simulation setup {:0>"+lr+"}/{:0>"+lr+"} "
+                      "run {:0>"+ls+"}/{:0>"+ls+"} with parameters:")
+                      .format(run_id, len(loop), sim_id, num_of_simulations))
+                pprint.pprint(params, indent=4)
+
+            # RUN SIMULATION
             for i in range(num_of_steps):
                 if i % params['instant_steps'] == 0:
                     menv.cause_change(params['instant_amount'])
                 sim.async_step()
-
 
             sim.end()
 
@@ -379,23 +432,29 @@ def run_experiment(params, loop, num_of_simulations, num_of_steps,
                 total_time = t2 - t1
                 times.append(total_time)
                 mean_time = np.mean(times)
-                runs_left = (len(loop[1]) - run_id) * num_of_simulations +\
+                runs_left = (len(loop) - run_id) * num_of_simulations +\
                             (num_of_simulations - sim_id)
                 est_end_time = time.ctime(time.time() + (mean_time * runs_left))
-                lr = str(len(str(run_id)))
-                ls = str(len(str(num_of_simulations)))
-                print(("Simulation setup {:0>"+lr+"}/{:0>"+lr+"} run "
-                       "{:0>"+ls+"}/{:0>"+ls+"} took {:.3f} seconds. "
-                       "Estimated end time at: {}")
-                      .format(run_id, len(loop[1]), sim_id, num_of_simulations,
-                              total_time, est_end_time))
+
+                print(("Run took {:.3f} seconds. Estimated end time at: {}\n")
+                      .format(total_time, est_end_time))
 
         avg_stats = calculate_averages(path, models)
 
         title = 'Connections: {}, features: {}, search width: {}, runs: {}' \
             .format(params['agents'] - 1, params['features'], params['search_width'], num_of_simulations)
-        create_graphs(path, 10, title, '{}_{}.png'.format(loop[0], val), avg_stats, models, draw_windows)
+
+        img_name = create_img_name(replace_params)
+        create_graphs(path, 10, title, img_name, avg_stats, models, draw_windows)
         pickle.dump(avg_stats, open(os.path.join(avgs_folder, 'avgs{}.p'.format(run_id)), 'wb'))
 
     print('Run took {}s'.format(int(np.around(time.time() - start_time))))
-    create_param_graph(avgs_folder, data_folder, loop[0], loop[1], models)
+
+    # Some purkka.
+    if looping_params == 1:
+        key, values = None, None
+        for k, v in old_params.items():
+            if type(v) == list:
+                key, values = k, v
+        create_param_graph(avgs_folder, data_folder, key, values, ['sgd', 'bandit', 'linear'])
+
