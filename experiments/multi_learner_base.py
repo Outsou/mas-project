@@ -381,7 +381,7 @@ def run_experiment(params, num_of_simulations, num_of_steps,
                 print(("Initialized simulation setup {:0>"+lr+"}/{:0>"+lr+"} "
                       "run {:0>"+ls+"}/{:0>"+ls+"} with parameters:")
                       .format(run_id, len(loop), sim_id, num_of_simulations))
-                pprint.pprint(params)
+                pprint.pprint(params, indent=4)
 
             # RUN SIMULATION
             for i in range(num_of_steps):
@@ -402,7 +402,7 @@ def run_experiment(params, num_of_simulations, num_of_steps,
                             (num_of_simulations - sim_id)
                 est_end_time = time.ctime(time.time() + (mean_time * runs_left))
 
-                print(("Run took {:.3f} seconds. Estimated end time at: {}")
+                print(("Run took {:.3f} seconds. Estimated end time at: {}\n")
                       .format(total_time, est_end_time))
 
         avg_stats = calculate_averages(path, models)
