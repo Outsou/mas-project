@@ -46,6 +46,7 @@ def calculate_averages(folder, models):
     avg_stats = {}
     avg_stats['same_picks'] = {}
     avg_stats['best_pick_mat'] = np.zeros((len(models), ) * 2)
+    avg_stats['wrong_pick_mat'] = np.zeros((len(models), ) * 2)
 
     # Initialize avg stats with the first stat file
     for key in keys_to_avg:
@@ -70,16 +71,19 @@ def calculate_averages(folder, models):
         picks2 = np.array(first_stats[combination[1]]['connections'])
         avg_stats['same_picks']['/'.join(combination)] = np.sum(picks1 == picks2) * avg_mul
 
-    # Calculate probability matrix for best picks
+    # Calculate probability matrix for best and not best picks
     for i in range(len(models)):
         for j in range(len(models)):
             if i == j:
                 avg_stats['best_pick_mat'][i, j] = 1
+                avg_stats['wrong_pick_mat'][i, j] = 0
             else:
-                chose_best1 = np.array(first_stats[models[i]]['chose_best'])
-                chose_best2 = np.array(first_stats[models[j]]['chose_best'])
-                both_best_count = np.sum(chose_best1 & chose_best2 == 1)
+                chose_best1 = np.array(first_stats[models[i]]['chose_best']).astype(bool)
+                chose_best2 = np.array(first_stats[models[j]]['chose_best']).astype(bool)
+                both_best_count = np.sum(chose_best1 & chose_best2)
                 avg_stats['best_pick_mat'][i, j] = both_best_count / np.sum(chose_best1) * avg_mul
+                wrong_best_count = np.sum(~chose_best1 & chose_best2)
+                avg_stats['wrong_pick_mat'][i, j] = wrong_best_count / np.sum(~chose_best1) * avg_mul
 
     # Add the rest of the files to avg_stats
     for i in range(1, len(files)):
@@ -109,10 +113,12 @@ def calculate_averages(folder, models):
         for i in range(len(models)):
             for j in range(len(models)):
                 if not i == j:
-                    chose_best1 = np.array(stats[models[i]]['chose_best'])
-                    chose_best2 = np.array(stats[models[j]]['chose_best'])
+                    chose_best1 = np.array(stats[models[i]]['chose_best']).astype(bool)
+                    chose_best2 = np.array(stats[models[j]]['chose_best']).astype(bool)
                     both_best_count = np.sum(chose_best1 & chose_best2 == 1)
                     avg_stats['best_pick_mat'][i, j] += both_best_count / np.sum(chose_best1) * avg_mul
+                    wrong_best_count = np.sum(~chose_best1 & chose_best2)
+                    avg_stats['wrong_pick_mat'][i, j] += wrong_best_count / np.sum(~chose_best1) * avg_mul
 
     return avg_stats
 
