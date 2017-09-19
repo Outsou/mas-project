@@ -319,7 +319,9 @@ def run_experiment(params, num_of_simulations, num_of_steps,
         'change_speed': 0,  # How fast preferences change continuously
         'instant_steps': 500000,  # How often instant preference change happens
         'instant_amount': 0,  # Amount of change in instant change
-        'reg_weight': 0
+        'reg_weight': 0, # How much weight is given to regularization
+        'novelty_weight': 0, # How much weight is given to novelty in evaluation
+        'memsize': 0
     }
 
     models = ['sgd', 'bandit', 'linear']
@@ -388,7 +390,9 @@ def run_experiment(params, num_of_simulations, num_of_steps,
                                                       std=params['std'],
                                                       active=active,
                                                       search_width=params['search_width'],
-                                                      reg_weight=params['reg_weight']))
+                                                      reg_weight=params['reg_weight'],
+                                                      novelty_weight=params['novelty_weight'],
+                                                      memsize=params['memsize']))
                 else:
                     # Generate a rule vec with negative and positive change_speed elements
                     rule_vec = np.random.choice([-params['change_speed'], params['change_speed']], params['features'])
@@ -402,7 +406,10 @@ def run_experiment(params, num_of_simulations, num_of_steps,
                                                       std=params['std'],
                                                       active=active,
                                                       search_width=params['search_width'],
-                                                      rule_vec=rule_vec))
+                                                      rule_vec=rule_vec,
+                                                      novelty_weight=params['novelty_weight'],
+                                                      memsize=params['memsize']
+                                                      ))
                 active = False
 
             # Connect everyone to the main agent
@@ -424,7 +431,7 @@ def run_experiment(params, num_of_simulations, num_of_steps,
                 pprint.pprint(params, indent=4)
 
             # RUN SIMULATION
-            for i in range(num_of_steps):
+            for i in range(1, num_of_steps + 1):
                 if i % params['instant_steps'] == 0:
                     menv.cause_change(params['instant_amount'])
                 sim.async_step()

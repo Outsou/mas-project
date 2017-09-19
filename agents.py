@@ -112,7 +112,7 @@ class FeatureAgent(RuleAgent):
         evaluation, _ = self.evaluate(artifact)
 
         if evaluation >= self._veto_threshold:
-            #self.learn(artifact, self.teaching_iterations)
+            self.learn(artifact)
             return True, artifact
         else:
             return False, artifact
@@ -325,14 +325,18 @@ class MultiAgent(FeatureAgent):
 
         self.age += 1
 
+        # Create an artifact if agent is active or has memory
+        if self.active or self.stmem.length > 0:
+            artifact, _ = self.artifact_cls.invent(self.search_width, self, self.create_kwargs)
+            features = self.get_features(artifact)
+            eval, _ = self.evaluate(artifact)
+            if eval >= self._own_threshold:
+                self.learn(artifact)
+
+        # Stop here if not the active agent
         if not self.active:
             self.update_means()
             return
-
-        # Create an artifact
-        artifact, _ = self.artifact_cls.invent(self.search_width, self, self.create_kwargs)
-        features = self.get_features(artifact)
-        eval, _ = self.evaluate(artifact)
 
         # Gather evaluations from the other agents
         opinions = {}
@@ -434,7 +438,8 @@ class MultiAgent(FeatureAgent):
         stochastic gradient descent (SGD),
         Q-learning for n-armed bandit problem
         """
-        def __init__(self, addrs, num_of_features, std, centroid_rate=200, weight_rate=0.2, e=0.2, reg_weight=0.5):
+        def __init__(self, addrs, num_of_features, std,
+                     centroid_rate=200, weight_rate=0.2, e=0.2, reg_weight=0.5):
             '''
             :param list addrs:
                 Addresses of the agents that are modeled.
