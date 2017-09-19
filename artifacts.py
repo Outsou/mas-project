@@ -33,17 +33,24 @@ class DummyArtifact(Artifact):
     @staticmethod
     def invent(n, agent, create_kwargs):
         '''Creates n artifacts and returns the best one.'''
+        def add_feature_framings(artifact):
+            artifact.framings['features'] = {}
+            for i in range(len(artifact.obj)):
+                name = 'dummy_' + str(i)
+                artifact.framings['features'][name] = artifact.obj[i]
+
         obj = DummyArtifact.create(**create_kwargs)
         best_artifact = DummyArtifact(agent, obj)
+        add_feature_framings(best_artifact)
         best_eval, _ = agent.evaluate(best_artifact)
         for _ in range(n - 1):
             obj = DummyArtifact.create(**create_kwargs)
             artifact = DummyArtifact(agent, obj)
+            add_feature_framings(artifact)
             eval, _ = agent.evaluate(artifact)
             if eval > best_eval:
                 best_artifact = artifact
                 best_eval = eval
-        best_artifact.add_eval(agent, best_eval)
         return best_artifact, None
 
 

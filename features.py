@@ -16,6 +16,9 @@ class DummyFeature(Feature):
     def extract(self, artifact):
         return float(artifact.obj[self.feature_idx])
 
+    def __str__(self):
+        return '{}_{}'.format(self.name, self.feature_idx)
+
 
 class ImageBenfordsLawFeature(Feature):
     """Feature computing the Benford's Law for images.

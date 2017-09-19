@@ -48,12 +48,11 @@ class FeatureAgent(RuleAgent):
         '''
         super().__init__(environment, log_folder=log_folder,
                          log_level=log_level)
-
-        max_distance = artifact_cls.max_distance(create_kwargs)
+        observed_features = [str(rule.feat) for rule in rules]
         self.stmem = FeatureAgent.STMemory(artifact_cls=artifact_cls,
                                            length=memsize,
                                            max_length=memsize,
-                                           max_distance=max_distance)
+                                           features=observed_features)
         self.artifact_cls = artifact_cls
         self._own_threshold = critic_threshold
         self._veto_threshold = veto_threshold
@@ -78,18 +77,20 @@ class FeatureAgent(RuleAgent):
     def evaluate(self, artifact):
         '''Evaluates an artifact based on value and novelty'''
         if self.name in artifact.evals:
-            return artifact.evals[self.name], None
+            return artifact.evals[self.name], artifact.framings[self.name]
 
         value, _ = super().evaluate(artifact)
         if self.stmem.length <= 0:
-            artifact.add_eval(self, value)
-            return value, None
+            fr = {'value': value, 'novelty': None}
+            artifact.add_eval(self, value, fr)
+            return value, fr
 
         novelty = self.novelty(artifact)
         evaluation = (1 - self.novelty_weight) * value + self.novelty_weight * novelty
-        artifact.add_eval(self, evaluation)
+        fr = {'value': value, 'novelty': novelty}
+        artifact.add_eval(self, evaluation, fr)
 
-        return evaluation, None
+        return evaluation, fr
 
     def invent(self, n):
         '''Invents an artifact with n iterations and chooses the best.'''
@@ -111,7 +112,7 @@ class FeatureAgent(RuleAgent):
         evaluation, _ = self.evaluate(artifact)
 
         if evaluation >= self._veto_threshold:
-            #self.learn(artifact, self.teaching_iterations)
+            self.learn(artifact)
             return True, artifact
         else:
             return False, artifact
@@ -124,8 +125,12 @@ class FeatureAgent(RuleAgent):
     async def act(self):
         # Create and evaluate an artifact
         artifact = self.invent(self.search_width)
-        eval, _ = self.evaluate(artifact)
-        self._log(logging.INFO, 'Created artifact with evaluation {}'.format(eval))
+        eval, framings = self.evaluate(artifact)
+        novelty = None if framings['novelty'] is None else np.around(framings['novelty'], 2)
+        self._log(logging.INFO, 'Created artifact with evaluation {} (value: {}, novelty: {})'
+                  .format(np.around(eval, 2),
+                          np.around(framings['value'], 2),
+                          novelty))
         self.add_artifact(artifact)
 
         if eval >= self._own_threshold:
@@ -144,12 +149,14 @@ class FeatureAgent(RuleAgent):
     class STMemory:
         '''Agent's short-term memory model using a simple list which stores
         artifacts as is.'''
-        def __init__(self, artifact_cls, length, max_distance, max_length=100):
+        def __init__(self, artifact_cls, length, features, max_length=100):
             self.length = length
             self.artifacts = []
             self.max_length = max_length
             self.artifact_cls = artifact_cls
-            self.max_distance = max_distance
+            # Max distance is between a vector of zeros and a vector of ones
+            self.max_distance = np.linalg.norm(np.ones(len(features)))
+            self.features = features
 
         def _add_artifact(self, artifact):
             if len(self.artifacts) >= 2 * self.max_length:
@@ -168,12 +175,20 @@ class FeatureAgent(RuleAgent):
             self.learn(artifact)
 
         def distance(self, artifact):
+            def extract_observed_features(art):
+                observed_features = []
+                for feature in self.features:
+                    observed_features.append(art.framings['features'][feature])
+                return np.array(observed_features)
+
             limit = self.get_comparison_amount()
             if limit == 0:
                 return np.random.random() * self.max_distance / self.max_distance
             min_distance = self.max_distance
+
+            features = extract_observed_features(artifact)
             for a in self.artifacts[:limit]:
-                d = self.artifact_cls.distance(artifact, a)
+                d = np.linalg.norm(features - extract_observed_features(a))
                 if d < min_distance:
                     min_distance = d
             return min_distance / self.max_distance
@@ -310,14 +325,18 @@ class MultiAgent(FeatureAgent):
 
         self.age += 1
 
+        # Create an artifact if agent is active or has memory
+        if self.active or self.stmem.length > 0:
+            artifact, _ = self.artifact_cls.invent(self.search_width, self, self.create_kwargs)
+            features = self.get_features(artifact)
+            eval, _ = self.evaluate(artifact)
+            if eval >= self._own_threshold:
+                self.learn(artifact)
+
+        # Stop here if not the active agent
         if not self.active:
             self.update_means()
             return
-
-        # Create an artifact
-        artifact, _ = self.artifact_cls.invent(self.search_width, self, self.create_kwargs)
-        features = self.get_features(artifact)
-        eval, _ = self.evaluate(artifact)
 
         # Gather evaluations from the other agents
         opinions = {}
@@ -419,7 +438,8 @@ class MultiAgent(FeatureAgent):
         stochastic gradient descent (SGD),
         Q-learning for n-armed bandit problem
         """
-        def __init__(self, addrs, num_of_features, std, centroid_rate=200, weight_rate=0.2, e=0.2, reg_weight=0.5):
+        def __init__(self, addrs, num_of_features, std,
+                     centroid_rate=200, weight_rate=0.2, e=0.2, reg_weight=0.5):
             '''
             :param list addrs:
                 Addresses of the agents that are modeled.
