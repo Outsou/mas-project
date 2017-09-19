@@ -66,6 +66,10 @@ class ImageColorfulnessFeature(Feature):
 
 class ImageMeanHueFeature(Feature):
     """Compute mean hue for the image in HSV color space.
+
+    TODO: Currently this is badly implemented (but as described in the paper),
+    because hues close to 0 and 1 are close to each other but cause the mean
+    hue diverge.
     """
     def __init__(self):
         super().__init__('image_mean_hue', ['image'], float)
