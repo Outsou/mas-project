@@ -13,6 +13,29 @@ import pickle
 import os
 
 
+def record_stats(stats, key, addr, reward, chose_best):
+    """
+    Used to record stats at each step for MultiAgent
+
+    :param stats:
+        Stats-dictionary.
+    :param key:
+        Name of the learning method.
+    :param addr:
+        Address of the connection chosen by the learning method.
+    :param reward:
+        Reward from addr.
+    :param chose_best:
+        True if optimal choice was made, else False.
+    """
+    stats[key]['connections'].append(addr)
+    stats[key]['rewards'].append(reward)
+    if chose_best:
+        stats[key]['chose_best'].append(1)
+    else:
+        stats[key]['chose_best'].append(0)
+
+
 class FeatureAgent(RuleAgent):
     '''The base class for agents that use features.
     Should work with any artifact class that implements distance, max_distance,
@@ -297,32 +320,67 @@ class MultiAgent(FeatureAgent):
             self._R[i] = RuleLeaf(self.R[i].feat,
                                   GaussianMapper(mean, self.std))
 
+    def learn_and_record(self, features, opinions):
+        """Update the different learning methods and recods statistics from
+         them for analysis.
+
+        :param features:
+            Features of the artifact.
+        :param opinions:
+            Agent's neighbors' opinions about the artifact.
+         """
+        self.stats['opinions'].append(opinions)
+
+        # Record max and random rewards
+        best_eval = opinions[max(opinions, key=opinions.get)]
+        self.stats['max_rewards'].append(best_eval)
+        self.stats['random_rewards'].append(np.sum(list(opinions.values())) / len(opinions))
+
+        # Non-linear stochastic gradient descent selection and update
+        sgd_chosen_addr = self.learner.sgd_choose(features)
+        sgd_reward = opinions[sgd_chosen_addr]
+        self.learner.update_sgd(sgd_reward, sgd_chosen_addr, features)
+        record_stats(self.stats, 'sgd', sgd_chosen_addr,
+                     sgd_reward, sgd_reward == best_eval)
+
+        # Q-learning selection and update
+        bandit_chosen_addr = self.learner.bandit_choose()
+        bandit_reward = opinions[bandit_chosen_addr]
+        self.learner.update_bandit(bandit_reward, bandit_chosen_addr)
+        record_stats(self.stats, 'bandit', bandit_chosen_addr,
+                     bandit_reward, bandit_reward == best_eval)
+
+        # Linear regression selection and update
+        linear_chosen_addr = self.learner.linear_choose(features)
+        linear_reward = opinions[linear_chosen_addr]
+        self.learner.update_linear_regression(linear_reward, linear_chosen_addr, features)
+        record_stats(self.stats, 'linear', linear_chosen_addr,
+                     linear_reward, linear_reward == best_eval)
+
+        # Polynomial regression selection and update
+        poly_chosen_addr = self.learner.poly_choose(features)
+        poly_reward = opinions[poly_chosen_addr]
+        self.learner.update_poly(poly_reward, poly_chosen_addr, features)
+        record_stats(self.stats, 'poly', poly_chosen_addr,
+                     poly_reward, poly_reward == best_eval)
+
+    async def gather_opinions(self, addrs, artifact):
+        """Gather opinions about the artifact from agent addresses.
+        """
+        # Gather evaluations from the other agents
+        opinions = {}
+        for addr in addrs:
+            remote_agent = await self.env.connect(addr)
+            opinion, _ = await remote_agent.evaluate(artifact)
+            opinions[addr] = opinion
+        return opinions
+
     @aiomas.expose
     async def act(self):
         """If active, create an artifact and send it to everyone for evaluation.
         Update models based on the evaluation received from the connection
         chosen by the model.
         """
-        def record_stats(key, addr, reward, chose_best):
-            '''
-            Used to record stats at each step.
-
-            :param key:
-                Name of the learning method.
-            :param addr:
-                Address of the connection chosen by the learning method.
-            :param reward:
-                Reward from addr.
-            :param chose_best:
-                True if optimal choice was made, else False.
-            '''
-            self.stats[key]['connections'].append(addr)
-            self.stats[key]['rewards'].append(reward)
-            if chose_best:
-                self.stats[key]['chose_best'].append(1)
-            else:
-                self.stats[key]['chose_best'].append(0)
-
         self.age += 1
 
         # Create an artifact if agent is active or has memory
@@ -338,47 +396,8 @@ class MultiAgent(FeatureAgent):
             self.update_means()
             return
 
-        # Gather evaluations from the other agents
-        opinions = {}
-        for addr in list(self.connections.keys()):
-            remote_agent = await self.env.connect(addr)
-            opinion, _ = await remote_agent.evaluate(artifact)
-            opinions[addr] = opinion
-
-        self.stats['opinions'].append(opinions)
-
-        # Record max and random rewards
-        best_eval = opinions[max(opinions, key=opinions.get)]
-        self.stats['max_rewards'].append(best_eval)
-        self.stats['random_rewards'].append(np.sum(list(opinions.values())) / len(opinions))
-
-        # Non-linear stochastic gradient descent selection and update
-        sgd_chosen_addr = self.learner.sgd_choose(features)
-        sgd_reward = opinions[sgd_chosen_addr]
-        self.learner.update_sgd(sgd_reward, sgd_chosen_addr, features)
-        record_stats('sgd', sgd_chosen_addr,
-                     sgd_reward, sgd_reward == best_eval)
-
-        # Q-learning selection and update
-        bandit_chosen_addr = self.learner.bandit_choose()
-        bandit_reward = opinions[bandit_chosen_addr]
-        self.learner.update_bandit(bandit_reward, bandit_chosen_addr)
-        record_stats('bandit', bandit_chosen_addr,
-                     bandit_reward, bandit_reward == best_eval)
-
-        # Linear regression selection and update
-        linear_chosen_addr = self.learner.linear_choose(features)
-        linear_reward = opinions[linear_chosen_addr]
-        self.learner.update_linear_regression(linear_reward, linear_chosen_addr, features)
-        record_stats('linear', linear_chosen_addr,
-                     linear_reward, linear_reward == best_eval)
-
-        # Polynomial regression selection and update
-        poly_chosen_addr = self.learner.poly_choose(features)
-        poly_reward = opinions[poly_chosen_addr]
-        self.learner.update_poly(poly_reward, poly_chosen_addr, features)
-        record_stats('poly', poly_chosen_addr,
-                     poly_reward, poly_reward == best_eval)
+        opinions = await self.gather_opinions(self.connections.keys(), artifact)
+        self.learn_and_record(features, opinions)
 
     @aiomas.expose
     def close(self, folder=None):
