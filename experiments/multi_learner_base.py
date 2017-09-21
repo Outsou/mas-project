@@ -321,7 +321,8 @@ def run_experiment(params, num_of_simulations, num_of_steps,
         'instant_amount': 0,  # Amount of change in instant change
         'reg_weight': 0, # How much weight is given to regularization
         'novelty_weight': 0, # How much weight is given to novelty in evaluation
-        'memsize': 0
+        'memsize': 0,
+        'send_prob': 0 # Probability that non-active agent creates and sends an artifact
     }
 
     models = ['sgd', 'bandit', 'linear']
@@ -408,7 +409,8 @@ def run_experiment(params, num_of_simulations, num_of_steps,
                                                       search_width=params['search_width'],
                                                       rule_vec=rule_vec,
                                                       novelty_weight=params['novelty_weight'],
-                                                      memsize=params['memsize']
+                                                      memsize=params['memsize'],
+                                                      send_prob=params['send_prob']
                                                       ))
                 active = False
 
