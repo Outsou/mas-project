@@ -458,7 +458,7 @@ class MultiAgent(FeatureAgent):
         Q-learning for n-armed bandit problem
         """
         def __init__(self, addrs, num_of_features, std,
-                     centroid_rate=200, weight_rate=0.2, e=0.2, reg_weight=0.5):
+                     centroid_rate=0.01, weight_rate=0.2, e=0.2, reg_weight=0.5):
             '''
             :param list addrs:
                 Addresses of the agents that are modeled.
@@ -561,7 +561,7 @@ class MultiAgent(FeatureAgent):
             # Calculate gradient of gaussian pdf w.r.t mean
             gradient = (features - self.centroids[addr]) \
                        * np.exp(-(features - self.centroids[addr]) ** 2 / (2 * self.std ** 2)) \
-                       / np.sqrt(2 * np.pi) * (self.std ** 2) ** (3 / 2)
+                       / (np.sqrt(2 * np.pi) * (self.std ** 2) ** (3 / 2))
 
             # Update centroid
             self.centroids[addr] += self.centroid_rate * gradient * error
