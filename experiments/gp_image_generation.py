@@ -17,9 +17,8 @@ if __name__ == "__main__":
     critic_threshold = 0.001
     veto_threshold = 0.001
 
-    novelty_weight = 0.85
-    memsize = 100000
-
+    novelty_weight = -1
+    memsize = 10000
     pset = create_pset()
 
     shape = (32, 32)

@@ -53,7 +53,7 @@ class StatEnvironment(MultiEnvironment):
 
         return dict
 
-    def save_artifacts(self, folder):
+    def save_artifacts(self, folder, *args, **kwargs):
         '''
         Asks each agent to save their artifacts.
 
@@ -75,5 +75,6 @@ class StatEnvironment(MultiEnvironment):
                 shutil.rmtree(agent_folder)
             os.makedirs(agent_folder)
             artifacts, artifact_cls = run(agent.get_artifacts())
+            print("Saving {} artifacts from {}".format(len(artifacts), name))
             for i in range(len(artifacts)):
-                artifact_cls.save_artifact(artifacts[i], agent_folder, i, artifacts[i].evals[name])
+                artifact_cls.save_artifact(artifacts[i], agent_folder, i, artifacts[i].evals[name], *args, **kwargs)

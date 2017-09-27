@@ -75,3 +75,4 @@ mgr_addrs.txt
 *.png
 *.p
 testing/
+tests/

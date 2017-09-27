@@ -1,11 +1,16 @@
+import os
+
 from creamas.core.artifact import Artifact
 
 from deap import tools, creator, base
 import deap.gp as gp
+from deap import algorithms
 
 import logging
 import numpy as np
+from scipy import misc
 import matplotlib.pyplot as plt
+from matplotlib import cm
 
 
 class DummyArtifact(Artifact):
@@ -55,12 +60,39 @@ class DummyArtifact(Artifact):
 
 
 class GeneticImageArtifact(Artifact):
-    def __init__(self, creator, obj, function_tree):
+    def __init__(self, creator, obj, function_tree, string_repr=None):
         super().__init__(creator, obj, domain='image')
         self.framings['function_tree'] = function_tree
+        self.framings['string_repr'] = string_repr
+
 
     @staticmethod
-    def save_artifact(artifact, folder, id, eval):
+    def artifact_from_file(fname, pset):
+        """Recreate an individual from a string saved into a file.
+        """
+        s = ""
+        with open(fname, 'r') as f:
+            s = f.readline()
+        s = s.strip()
+        individual = gp.PrimitiveTree.from_string(s, pset)
+        return individual
+
+
+    @staticmethod
+    def resave_with_resolution(fname, pset, color_map, shape=(1000, 1000)):
+        """Resave an individual saved as a string into a file with given
+        color mapping and resolution.
+        """
+        individual = GeneticImageArtifact.artifact_from_file(fname, pset)
+        func = gp.compile(individual, pset)
+        img = GeneticImageArtifact.generate_image(func, shape)
+        color_img = color_map[img]
+        new_fname = "{}_{}x{}.png".format(fname[:-4], shape[0], shape[1])
+        misc.imsave(new_fname, color_img)
+
+
+    @staticmethod
+    def save_artifact(artifact, folder, id, eval, pset, color_map, shape=(400, 400)):
         '''
         Saves an artifact as .png.
         :param artifact:
@@ -72,10 +104,20 @@ class GeneticImageArtifact(Artifact):
         :param eval:
             Value of the artifact. This is written to the image.
         '''
-        plt.imshow(artifact.obj, shape=artifact.obj.shape, interpolation='none')
-        plt.title('Eval: {}'.format(eval))
-        plt.savefig('{}/artifact{}'.format(folder, id))
-        plt.close()
+        s = artifact.framings['string_repr']
+        individual = gp.PrimitiveTree.from_string(s, pset)
+        func = gp.compile(individual, pset)
+        img = GeneticImageArtifact.generate_image(func, shape)
+        color_img = color_map[img]
+        imname = 'bw_artifact{:0>5}_{}.png'.format(id, eval)
+        misc.imsave(os.path.join(folder, imname), img)
+        imname = 'artifact{:0>5}_{}.png'.format(id, eval)
+        misc.imsave(os.path.join(folder, imname), color_img)
+
+        fname = os.path.join(folder, 'f_artifact{:0>5}_{}.txt'.format(id, eval))
+        with open(fname, 'w') as f:
+            f.write("{}\n".format(s))
+
 
     @staticmethod
     def max_distance(create_kwargs):
@@ -119,6 +161,15 @@ class GeneticImageArtifact(Artifact):
         '''
         width = shape[0]
         height = shape[1]
+        img = np.zeros(shape)
+        coords = [(x, y) for x in range(width) for y in range(height)]
+        for x, y in coords:
+            # Normalize coordinates in range [-1, 1]
+            x_normalized = x / width * 2 - 1
+            y_normalized = y / height * 2 - 1
+            img[x, y] = np.around(func(x_normalized, y_normalized))
+
+        """
         image = np.zeros((width, height, 3))
 
         # Calculate color values for each x, y coordinate
@@ -127,12 +178,11 @@ class GeneticImageArtifact(Artifact):
             # Normalize coordinates in range [-1, 1]
             x_normalized = x / width * 2 - 1
             y_normalized = y / height * 2 - 1
-            image[x, y, :] = np.around(np.array(func(x_normalized,
-                                                     y_normalized)))
-
+            image[x, y, :] = np.around(func(x_normalized, y_normalized))
+        """
         # Clip values in range [0, 255]
-        image = np.clip(image, 0, 255, out=image)
-        return np.uint8(image)
+        image = np.clip(img, 0, 255, out=img)
+        return np.uint8(img)
 
     @staticmethod
     def evaluate(individual, agent, shape):
@@ -158,14 +208,16 @@ class GeneticImageArtifact(Artifact):
             individual.image = image
 
         # Convert deap individual to creamas artifact for evaluation
-        artifact = GeneticImageArtifact(agent, individual.image, individual)
+        artifact = GeneticImageArtifact(agent, individual.image, individual, gp.compile(individual, individual.pset))
         evaluation, _ = agent.evaluate(artifact)
         return evaluation,
 
     @staticmethod
-    def evolve_population(population, generations, toolbox, pset):
+    def evolve_population(population, generations, toolbox, pset, hall_of_fame,
+                          cxpb=0.75, mutpb=0.25):
         '''
-        Evolves a population of individuals.
+        Evolves a population of individuals. Applies elitist (k=1) in addition
+        to toolbox's selection strategy to the individuals.
 
         :param population:
             A list containing the individuals of the population.
@@ -176,22 +228,23 @@ class GeneticImageArtifact(Artifact):
         :param pset:
             The primitive set used in the evolution.
         '''
-        # Mating and mutation probabilities
-        CXPB, MUTPB = 0.5, 0.2
-
         fitnesses = map(toolbox.evaluate, population)
         for ind, fit in zip(population, fitnesses):
             ind.fitness.values = fit
+        hall_of_fame.update(population)
 
         for g in range(generations):
-            # Select the next generation individuals
-            offspring = toolbox.select(population, len(population))
+            # Select the next generation individuals with elitist (k=1) and
+            # toolboxes selection method
+            offspring = tools.selBest(population, 1)
+            offspring += toolbox.select(population, len(population) - 1)
             # Clone the selected individuals
             offspring = list(map(toolbox.clone, offspring))
 
             # Apply crossover and mutation on the offspring
+
             for child1, child2 in zip(offspring[::2], offspring[1::2]):
-                if np.random.random() < CXPB:
+                if np.random.random() < cxpb:
                     toolbox.mate(child1, child2)
                     del child1.fitness.values
                     del child2.fitness.values
@@ -199,7 +252,7 @@ class GeneticImageArtifact(Artifact):
                     del child2.image
 
             for mutant in offspring:
-                if np.random.random() < MUTPB:
+                if np.random.random() < mutpb:
                     toolbox.mutate(mutant, pset)
                     del mutant.fitness.values
                     if mutant.image is not None:
@@ -213,21 +266,26 @@ class GeneticImageArtifact(Artifact):
 
             # The population is entirely replaced by the offspring
             population[:] = offspring
+            # Update hall of fame with new population.
+            hall_of_fame.update(population)
 
     @staticmethod
-    def create_population(size, pset):
+    def create_population(size, pset, generation_method):
         '''
         Creates a population of randomly generated individuals.
         :param size:
             The size of the generated population.
         :param pset:
             The primitive set used in individual generation.
+        :param generation_method:
+            Generation method to create individuals, e.g.
+            ``deap.gp.genHalfAndHalf``.
         :return:
             A list containing the generated population.
         '''
         GeneticImageArtifact.init_creator(pset)
         pop_toolbox = base.Toolbox()
-        pop_toolbox.register("expr", gp.genHalfAndHalf, pset=pset, min_=2, max_=3)
+        pop_toolbox.register("expr", generation_method, pset=pset, min_=2, max_=6)
         pop_toolbox.register("individual", tools.initIterate, creator.Individual,
                              pop_toolbox.expr)
         pop_toolbox.register("population", tools.initRepeat, list, pop_toolbox.individual)
@@ -302,14 +360,57 @@ class GeneticImageArtifact(Artifact):
         return GeneticImageArtifact(agent, ind1.image, list(ind1))
 
     @staticmethod
-    def create(generations, agent, toolbox, pset, pop_size, shape):
-        '''
+    def initial_population(agent, pset, pop_size, method='random'):
+        """Create initial population for a new
+
+        :param agent:
+            Agent which creates the population.
+        :param pset:
+            pset for the population.
+        :param pop_size:
+            Size of the population.
+        :param method:
+            Either '50-50' or 'random'. If '50-50' takes (at most) half of the
+            initial artifacts from the agent's memory and creates others. If
+            'random' creates all individuals.
+        :return: Created population
+        """
+        # Return at most half old artifacts and at least half new ones.
+        if method == '50-50':
+            population = []
+            if len(agent.stmem.artifacts) > 0:
+                mem_size = min(int(pop_size / 2), len(agent.stmem.artifacts))
+                mem_arts = np.random.choice(agent.stmem.artifacts,
+                                            size=mem_size, replace=False)
+                for art in mem_arts:
+                    individual = creator.Individual(
+                        art.framings['function_tree'])
+                    population.append(individual)
+
+            if len(population) < pop_size:
+                population += GeneticImageArtifact.create_population(
+                    pop_size - len(population), pset, gp.genHalfAndHalf)
+            return population
+        # Return random population
+        return GeneticImageArtifact.create_population(pop_size, pset,
+                                                      gp.genHalfAndHalf)
+
+
+    @staticmethod
+    def create(generations, agent, hall_of_fame, toolbox, pset, pop_size, shape,
+               init_method='50-50'):
+        """
         Creates an artifact.
+
+        The best individuals created during the evolution are kept in the given
+        hall of fame.
 
         :param generations:
             Number of generations evolved in the creation process.
         :param agent:
             The agent whose memory and evaluation function is used.
+        :param hall_of_fame:
+            deap's :class:`HallOfFame`-object to store the best individuals.
         :param toolbox:
             Deap toolbox used in the evolution.
         :param pset:
@@ -318,33 +419,26 @@ class GeneticImageArtifact(Artifact):
             Size of the population.
         :param shape:
             Shape of the image.
+        :param init_method:
+            Population initialization method.
+            See :meth:`GeneticImageArtifact.initial_population`.
         :return:
-            The best individual from the last generation.
-        '''
-        population = []
+            The given :class:`HallOfFame`-object.
+        """
 
-        # Start population with random artifacts from the agent's memory.
-        if len(agent.stmem.artifacts) > 0:
-            mem_size = min(pop_size, len(agent.stmem.artifacts))
-            mem_arts = np.random.choice(agent.stmem.artifacts, size=mem_size, replace=False)
-            for art in mem_arts:
-                individual = creator.Individual(art.framings['function_tree'])
-                population.append(individual)
-
-        # If agent's memory doesn't contain enough artifacts, fill rest of the population randomly
-        if len(population) < pop_size:
-            population += GeneticImageArtifact.create_population(pop_size - len(population), pset)
-
-        toolbox.register("evaluate", GeneticImageArtifact.evaluate, agent=agent, shape=shape)
-        GeneticImageArtifact.evolve_population(population, generations, toolbox, pset)
-        best = tools.selBest(population, 1)[0]
-        return best
-
+        population = GeneticImageArtifact.initial_population(agent, pset,
+                                                             pop_size,
+                                                             init_method)
+        toolbox.register("evaluate", GeneticImageArtifact.evaluate,
+                         agent=agent, shape=shape)
+        GeneticImageArtifact.evolve_population(population, generations,
+                                               toolbox, pset, hall_of_fame)
+        return hall_of_fame
 
     @staticmethod
-    def invent(n, agent, create_kwargs):
+    def invent(n, agent, create_kwargs, n_artifacts=1):
         '''
-        Invent an artifact.
+        Invent new artifacts.
 
         :param n:
             Number of generations to be evolved.
@@ -352,9 +446,15 @@ class GeneticImageArtifact(Artifact):
             The agent who is "creating" the artifact.
         :param create_kwargs:
             Parameters used in creating artifacts.
+        :param n_artifacts:
+            Number of artifacts to be created.
         :return:
             The invented artifact.
         '''
-        function_tree = GeneticImageArtifact.create(n, agent, **create_kwargs)
-        artifact = GeneticImageArtifact(agent, function_tree.image, list(function_tree))
-        return artifact, None
+        hof = tools.HallOfFame(n_artifacts)
+        hof = GeneticImageArtifact.create(n, agent, hof, **create_kwargs)
+        arts = []
+        for ft in hof:
+            artifact = GeneticImageArtifact(agent, ft.image, list(ft), str(ft))
+            arts.append((artifact, None))
+        return arts

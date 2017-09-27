@@ -3,6 +3,40 @@ from creamas.rules.feature import Feature
 import numpy as np
 import cv2
 
+
+def fractal_dimension(image):
+    '''Estimates the fractal dimension of an image with box counting.
+    Counts pixels with value 0 as empty and everything else as non-empty.
+    Input image has to be grayscale.
+
+    See, e.g `Wikipedia <https://en.wikipedia.org/wiki/Fractal_dimension>`_.
+
+    :param image: numpy.ndarray
+    :returns: estimation of fractal dimension
+    :rtype: float
+    '''
+    pixels = np.asarray(np.nonzero(image > 0)).transpose()
+    lx = image.shape[1]
+    ly = image.shape[0]
+    if len(pixels) < 2:
+        return 0
+    scales = np.logspace(1, 4, num=20, endpoint=False, base=2)
+    Ns = []
+    for scale in scales:
+        H, edges = np.histogramdd(pixels,
+                                  bins=(np.arange(0, lx, scale),
+                                        np.arange(0, ly, scale)))
+        H_sum = np.sum(H > 0)
+        if H_sum == 0:
+            H_sum = 1
+        Ns.append(H_sum)
+
+    coeffs = np.polyfit(np.log(scales), np.log(Ns), 1)
+    hausdorff_dim = -coeffs[0]
+
+    return hausdorff_dim
+
+
 class DummyFeature(Feature):
     '''A dummy feature used for testing purposes.'''
     def __init__(self, feature_idx):
@@ -41,17 +75,20 @@ class ImageBenfordsLawFeature(Feature):
         # Sort, reverse and rescale to give the histogram a sum of 1.0
         h2 = np.sort(hist, 0)[::-1] * (1.0 / np.sum(hist))
         # Compute Benford's Law feature
-        total = np.sum([h2[i] - self.b[i] for i in range(len(h2))])
-        return 1.0 - (total / self.b_max)
+        total = np.sum([np.abs(h2[i] - self.b[i]) for i in range(len(h2))])
+        benford = float(1.0 - (total / self.b_max))
+        return 0.0 if benford < 0 else benford
 
 
 class ImageColorfulnessFeature(Feature):
     """Compute image's colorfulness.
 
     Accepts only RBG color images.
+
+    (This is not very good aesthetic measure.)
     """
     def __init__(self):
-        super().__init__('image_colourfulness', ['image'], float)
+        super().__init__('image_colorfulness', ['image'], float)
 
     def extract(self, artifact):
         img = artifact.obj
@@ -61,10 +98,11 @@ class ImageColorfulnessFeature(Feature):
         if img.dtype != np.float:
             img = img / 255.0
         r, g, b = img[:, :, 0], img[:, :, 1], img[:, :, 2]
-        delta_rg, delta_yb = np.abs(r-b), np.abs((r+b)/2.0 - b)
+        delta_rg, delta_yb = np.abs(r-g), np.abs((r+g)/2.0 - b)
         mrg, myb = np.mean(delta_rg), np.mean(delta_yb)
         srg, syb = np.std(delta_rg), np.std(delta_yb)
-        return np.sqrt(srg**2 + syb**2) + 0.3 * np.sqrt(mrg**2 + myb**2)
+        cf = float(np.sqrt(srg**2 + syb**2) + 0.3 * np.sqrt(mrg**2 + myb**2))
+        return cf
 
 
 class ImageMeanHueFeature(Feature):
@@ -86,4 +124,56 @@ class ImageMeanHueFeature(Feature):
             img = img / 255.0
         hsv_img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
         h = hsv_img[:, :, 0]
-        return np.mean(h)
+        return float(np.mean(h))
+
+
+class ImageEntropyFeature(Feature):
+    def __init__(self):
+        super().__init__('image_entropy', ['image'], float)
+        # Max entropy for 256 bins, i.e. the histogram has even distribution
+        self.max = 5.5451774444795623
+
+    def extract(self, artifact):
+        img = artifact.obj
+        # Convert color image to black and white
+        if len(img.shape) == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        hg = cv2.calcHist([img], [0], None, [256], [0, 256])
+        # Compute probabilities for each bin in histogram
+        hg = hg / (img.shape[0] * img.shape[1])
+        # Compute entropy based on bin probabilities
+        e = -np.sum([hg[i] * np.log(hg[i]) for i in range(len(hg)) if hg[i] > 0.0])
+        return float(e) / self.max
+
+
+class ImageComplexityFeature(Feature):
+    '''Feature that estimates the fractal dimension of an image.
+    The color values must be in range [0, 255] and type ``int``.
+    '''
+    def __init__(self):
+        super().__init__('image_complexity', ['image'], float)
+
+    def extract(self, artifact):
+        img = artifact.obj
+        if len(img.shape) == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        edges = cv2.Canny(img, 100, 200)
+        return float(fractal_dimension(edges))
+
+
+"""
+class ImageCascadeClassifierFeature(Feature):
+    def __init__(self, cascade):
+        super().__init__('image_cascade_classifier', ['image'], float)
+        self.cascade = cascade
+
+    def extract(self, artifact):
+        img = artifact.obj
+        # Convert color image to black and white
+        if len(img.shape) == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        objs, rej_levelvs, level_weights = self.cascade.detectMultiScale3(img, outputRejectLevels=True)
+        if len(objs) == 0:
+            return 0.0
+        return len(objs)
+"""

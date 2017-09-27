@@ -103,7 +103,7 @@ class FeatureAgent(RuleAgent):
             return artifact.evals[self.name], artifact.framings[self.name]
 
         value, _ = super().evaluate(artifact)
-        if self.stmem.length <= 0:
+        if self.novelty_weight == -1:
             fr = {'value': value, 'novelty': None}
             artifact.add_eval(self, value, fr)
             return value, fr
@@ -115,10 +115,11 @@ class FeatureAgent(RuleAgent):
 
         return evaluation, fr
 
-    def invent(self, n):
+    def invent(self, n, *args, **kwargs):
         '''Invents an artifact with n iterations and chooses the best.'''
-        best_artifact, _ = self.artifact_cls.invent(n, self, self.create_kwargs)
-        return best_artifact
+        best_artifacts = self.artifact_cls.invent(n, self, self.create_kwargs,
+                                                  *args, **kwargs)
+        return best_artifacts
 
     def learn(self, artifact, iterations=1):
         '''Adds an artifact to memory.'''
@@ -147,17 +148,18 @@ class FeatureAgent(RuleAgent):
     @aiomas.expose
     async def act(self):
         # Create and evaluate an artifact
-        artifact = self.invent(self.search_width)
-        eval, framings = self.evaluate(artifact)
-        novelty = None if framings['novelty'] is None else np.around(framings['novelty'], 2)
-        self._log(logging.INFO, 'Created artifact with evaluation {} (value: {}, novelty: {})'
-                  .format(np.around(eval, 2),
-                          np.around(framings['value'], 2),
-                          novelty))
-        self.add_artifact(artifact)
+        artifacts = self.invent(self.search_width, n_artifacts=2)
+        for artifact, _ in artifacts:
+            eval, framings = self.evaluate(artifact)
+            novelty = None if framings['novelty'] is None else np.around(framings['novelty'], 2)
+            self._log(logging.INFO, 'Created artifact with evaluation {} (value: {}, novelty: {})'
+                      .format(np.around(eval, 2),
+                              np.around(framings['value'], 2),
+                              novelty))
+            self.add_artifact(artifact)
 
-        if eval >= self._own_threshold:
-            self.learn(artifact)
+            if eval >= self._own_threshold:
+                self.learn(artifact)
 
     @aiomas.expose
     def get_artifacts(self):
@@ -659,5 +661,5 @@ class MultiAgent(FeatureAgent):
             return best_addr
 
 
-class MultiAgent2(MultiAgent):
+class CollaboratorAgent(MultiAgent):
     pass

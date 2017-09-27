@@ -309,7 +309,7 @@ def make_loop_matrix(params):
     return loop, len(in_loop)
 
 
-def _get_default_params(params)
+def _get_default_params(params):
     if params is None:
         params = DEFAULT_PARAMS
     else:
@@ -317,6 +317,36 @@ def _get_default_params(params)
             if key not in params:
                 params[key] = value
     return params
+
+
+def create_agents(menv, params, log_folder, path, create_kwargs):
+    rets = []
+    for _ in range(params['agents']):
+        rules = []
+
+        for i in range(params['features']):
+            rules.append(RuleLeaf(DummyFeature(i),
+                                  GaussianMapper(np.random.rand(),
+                                                 params['std'])))
+
+        rule_weights = []
+        for _ in range(len(rules)):
+            rule_weights.append(np.random.random())
+
+        task = menv.spawn('agents:MultiAgent',
+                          log_folder=log_folder,
+                          data_folder=path,
+                          artifact_cls=DummyArtifact,
+                          create_kwargs=create_kwargs,
+                          rules=rules[:params['common_features']],
+                          rule_weights=rule_weights[:params['common_features']],
+                          std=params['std'],
+                          active=True,
+                          search_width=params['search_width'],
+                          reg_weight=params['reg_weight'])
+        ret = aiomas.run(until=task)
+        rets.append(ret)
+    return rets
 
 
 def run_experiment(params, num_of_simulations, num_of_steps,
@@ -356,32 +386,12 @@ def run_experiment(params, num_of_simulations, num_of_steps,
         for _ in range(num_of_simulations):
             t1 = time.monotonic()
             sim_id += 1
+
+            # Create multi-environment for the agents
             menv = create_environment(num_of_slaves=4)
 
-            for _ in range(params['agents']):
-                rules = []
-
-                for i in range(params['features']):
-                    rules.append(RuleLeaf(DummyFeature(i), GaussianMapper(np.random.rand(), params['std'])))
-
-                # rule_weights = [0.1, 0.3, 0.6]
-                rule_weights = []
-                for _ in range(len(rules)):
-                    rule_weights.append(np.random.random())
-
-                # active agent only uses common_features number of the rules
-                task = menv.spawn('agents:MultiAgent',
-                                  log_folder=log_folder,
-                                  data_folder=path,
-                                  artifact_cls=DummyArtifact,
-                                  create_kwargs=create_kwargs,
-                                  rules=rules[:params['common_features']],
-                                  rule_weights=rule_weights[:params['common_features']],
-                                  std=params['std'],
-                                  active=active,
-                                  search_width=params['search_width'],
-                                  reg_weight=params['reg_weight'])
-                aiomas.run(until=task)
+            # Create agents to the environment
+            create_agents(menv, params, log_folder, path, create_kwargs)
 
             # Connect everyone to the main agent
             G = nx.Graph()
