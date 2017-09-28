@@ -236,7 +236,7 @@ class MultiAgent(FeatureAgent):
     """
     def __init__(self, environment, std, data_folder, active=False,
                  rule_vec=None, reg_weight=0.1, gaussian_updates=False,
-                 *args, **kwargs):
+                 send_prob=0, *args, **kwargs):
         '''
         :param std:
             Standard deviation for the gaussian distribution used in evaluation.
@@ -246,6 +246,8 @@ class MultiAgent(FeatureAgent):
             Controls the change in agent's preferences. Is added to centroids each step.
         :param bool gaussian_updates:
             True if agent preferences are updated drawing from Gaussian distributions.
+        :param float send_prob:
+            Probability, that an inactive agent
         '''
         super().__init__(environment, *args, **kwargs)
         self.std = std
@@ -263,6 +265,7 @@ class MultiAgent(FeatureAgent):
         self.data_folder = data_folder
         self.reg_weight = reg_weight
         self.gaussian_updates = gaussian_updates
+        self.send_prob = send_prob
 
         if rule_vec is not None:
             assert len(rule_vec) == len(self.R), \
@@ -378,6 +381,17 @@ class MultiAgent(FeatureAgent):
             opinions[addr] = opinion
         return opinions
 
+    async def send_artifact(self, addr, artifact, eval, framings=None):
+        remote_agent = await self.env.connect(addr)
+        await remote_agent.give_artifact(artifact, eval, framings)
+
+    @aiomas.expose
+    def give_artifact(self, artifact, eval, addr):
+        features = self.get_features(artifact)
+        self.learner.update_sgd(eval, addr, features)
+        self.learner.update_linear_regression(eval, addr, features)
+        self.learner.update_bandit(eval, addr)
+
     @aiomas.expose
     async def act(self):
         """If active, create an artifact and send it to everyone for evaluation.
@@ -386,8 +400,10 @@ class MultiAgent(FeatureAgent):
         """
         self.age += 1
 
+        non_active_send = np.random.rand() < self.send_prob
+
         # Create an artifact if agent is active or has memory
-        if self.active or self.stmem.length > 0:
+        if self.active or self.stmem.length > 0 or non_active_send:
             artifact, _ = self.artifact_cls.invent(self.search_width, self, self.create_kwargs)
             features = self.get_features(artifact)
             eval, _ = self.evaluate(artifact)
@@ -396,6 +412,10 @@ class MultiAgent(FeatureAgent):
 
         # Stop here if not the active agent
         if not self.active:
+            if non_active_send:
+                # Send artifact to the active agent
+                addr = list(self.connections)[0]
+                await self.send_artifact(addr, artifact, eval, self.addr)
             self.update_means()
             return
 
@@ -461,7 +481,7 @@ class MultiAgent(FeatureAgent):
         Q-learning for n-armed bandit problem
         """
         def __init__(self, addrs, num_of_features, std,
-                     centroid_rate=200, weight_rate=0.2, e=0.2, reg_weight=0.5):
+                     centroid_rate=0.01, weight_rate=0.2, e=0.2, reg_weight=0.5):
             '''
             :param list addrs:
                 Addresses of the agents that are modeled.
@@ -564,7 +584,7 @@ class MultiAgent(FeatureAgent):
             # Calculate gradient of gaussian pdf w.r.t mean
             gradient = (features - self.centroids[addr]) \
                        * np.exp(-(features - self.centroids[addr]) ** 2 / (2 * self.std ** 2)) \
-                       / np.sqrt(2 * np.pi) * (self.std ** 2) ** (3 / 2)
+                       / (np.sqrt(2 * np.pi) * (self.std ** 2) ** (3 / 2))
 
             # Update centroid
             self.centroids[addr] += self.centroid_rate * gradient * error
