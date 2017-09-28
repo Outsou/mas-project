@@ -73,7 +73,7 @@ def test_fitness_rules(rule_names,
     menv = create_environment(2)
 
     for _ in range(1):
-        ret = aiomas.run(until=menv.spawn('agents:GeneticImageAgent',
+        ret = aiomas.run(until=menv.spawn('agents:GPImageAgent',
                                           log_folder=log_folder,
                                           save_folder=save_folder,
                                           artifact_cls=GeneticImageArtifact,
@@ -93,7 +93,7 @@ def test_fitness_rules(rule_names,
 if __name__ == "__main__":
     test_fitness_rules(('symm', 'benford', 'fd_aesthetics'),
                        (1.0, 1.0, 1.0),
-                       steps=40,
+                       steps=1,
                        pop_size=20,
                        search_width=10,
                        log_folder='gp_test_logs',

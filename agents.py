@@ -86,7 +86,8 @@ class FeatureAgent(RuleAgent):
         if rule_weights is None:
             rule_weights = [1] * len(rules)
         else:
-            assert len(rules) == len(rule_weights), "Different amount of rules and rule weights."
+            assert len(rules) == len(rule_weights),\
+                "Different amount of rules and rule weights."
 
         for i in range(len(rules)):
             self.add_rule(rules[i], rule_weights[i])
@@ -117,13 +118,15 @@ class FeatureAgent(RuleAgent):
         return evaluation, fr
 
     def invent(self, n, *args, **kwargs):
-        '''Invents an artifact with n iterations and chooses the best.'''
+        """Invents an artifact with n iterations and chooses the best.
+        """
         best_artifacts = self.artifact_cls.invent(n, self, self.create_kwargs,
                                                   *args, **kwargs)
         return best_artifacts
 
     def learn(self, artifact, iterations=1):
-        '''Adds an artifact to memory.'''
+        """Adds an artifact to memory.
+        """
         for i in range(iterations):
             self.stmem.train_cycle(artifact)
 
@@ -133,7 +136,9 @@ class FeatureAgent(RuleAgent):
 
     @aiomas.expose
     async def get_criticism(self, artifact):
-        '''Returns True if artifact passes agent's threshold, or False otherwise.'''
+        """Returns True if artifact passes agent's threshold, or False
+        otherwise.
+        """
         evaluation, _ = self.evaluate(artifact)
 
         if evaluation >= self._veto_threshold:
@@ -151,15 +156,14 @@ class FeatureAgent(RuleAgent):
         # Create and evaluate an artifact
         artifacts = self.invent(self.search_width, n_artifacts=1)
         for artifact, _ in artifacts:
-            eval, framings = self.evaluate(artifact)
-            novelty = None if framings['novelty'] is None else np.around(framings['novelty'], 2)
-            self._log(logging.INFO, 'Created artifact with evaluation {} (value: {}, novelty: {})'
-                      .format(np.around(eval, 2),
-                              np.around(framings['value'], 2),
-                              novelty))
+            e, fr = self.evaluate(artifact)
+            n = None if fr['novelty'] is None else np.around(fr['novelty'], 2)
+            self._log(logging.INFO,
+                      'Created artifact with evaluation {} (v: {}, n: {})'
+                      .format(np.around(e, 2), np.around(fr['value'], 2), n))
             self.add_artifact(artifact)
 
-            if eval >= self._own_threshold:
+            if e >= self._own_threshold:
                 self.learn(artifact)
 
     @aiomas.expose
@@ -173,8 +177,9 @@ class FeatureAgent(RuleAgent):
 
 
     class STMemory:
-        '''Agent's short-term memory model using a simple list which stores
-        artifacts as is.'''
+        """Agent's short-term memory model using a simple list which stores
+        artifacts as is.
+        """
         def __init__(self, artifact_cls, length, features, max_length=100):
             self.length = length
             self.artifacts = []
@@ -190,14 +195,15 @@ class FeatureAgent(RuleAgent):
             self.artifacts.insert(0, artifact)
 
         def learn(self, artifact):
-            '''Learn new artifact. Removes last artifact from the memory if it is
-            full.'''
+            """Learn new artifact. Removes last artifact from the memory if it
+            is full.
+            """
             self._add_artifact(artifact)
 
         def train_cycle(self, artifact):
-            '''Train cycle method to keep the interfaces the same with the SOM
+            """Train cycle method to keep the interfaces the same with the SOM
             implementation of the short term memory.
-            '''
+            """
             self.learn(artifact)
 
         def distance(self, artifact):
@@ -237,18 +243,20 @@ class MultiAgent(FeatureAgent):
     def __init__(self, environment, std, data_folder, active=False,
                  rule_vec=None, reg_weight=0.1, gaussian_updates=False,
                  send_prob=0, *args, **kwargs):
-        '''
+        """
         :param std:
             Standard deviation for the gaussian distribution used in evaluation.
         :param bool active:
             Agent acts only if it is active.
         :param rule_vec:
-            Controls the change in agent's preferences. Is added to centroids each step.
+            Controls the change in agent's preferences. Is added to centroids
+            each step.
         :param bool gaussian_updates:
-            True if agent preferences are updated drawing from Gaussian distributions.
+            True if agent preferences are updated drawing from Gaussian
+            distributions.
         :param float send_prob:
             Probability, that an inactive agent
-        '''
+        """
         super().__init__(environment, *args, **kwargs)
         self.std = std
         self.active = active
@@ -275,7 +283,8 @@ class MultiAgent(FeatureAgent):
         self.gaussian_updates = gaussian_updates
 
     def get_features(self, artifact):
-        '''Return objective values for features without mapping.'''
+        """Return objective values for features without mapping.
+        """
         features = []
         for rule in self.R:
             features.append(rule.feat(artifact))
@@ -312,7 +321,8 @@ class MultiAgent(FeatureAgent):
         """
         for i in range(len(self.R)):
             if self.gaussian_updates:
-                mean = self.R[i].mapper._mean + np.random.normal(0.0, self.rule_vec[i])
+                mean = self.R[i].mapper._mean +\
+                       np.random.normal(0.0, self.rule_vec[i])
                 mean = np.clip(mean, 0, 1)
             else:
                 mean = self.R[i].mapper._mean + self.rule_vec[i]
@@ -340,7 +350,8 @@ class MultiAgent(FeatureAgent):
         # Record max and random rewards
         best_eval = opinions[max(opinions, key=opinions.get)]
         self.stats['max_rewards'].append(best_eval)
-        self.stats['random_rewards'].append(np.sum(list(opinions.values())) / len(opinions))
+        rnd_rewards = np.sum(list(opinions.values())) / len(opinions)
+        self.stats['random_rewards'].append(rnd_rewards)
 
         # Non-linear stochastic gradient descent selection and update
         sgd_chosen_addr = self.learner.sgd_choose(features)
@@ -430,7 +441,8 @@ class MultiAgent(FeatureAgent):
         # Save stats to a file
         path = self.data_folder
         files_in_path = len(os.listdir(path))
-        pickle.dump(self.stats, open(os.path.join(path, 'stats{}.p'.format(files_in_path + 1)), 'wb'))
+        pickle_path = os.path.join(path, 'stats{}.p'.format(files_in_path + 1))
+        pickle.dump(self.stats, open(pickle_path, 'wb'))
 
         # Log stats about the run
         max_reward = np.sum(self.stats['max_rewards'])
@@ -471,7 +483,8 @@ class MultiAgent(FeatureAgent):
             for opinions in self.stats['opinions']:
                 total += opinions[connection]
             self._log(logging.INFO, '{}: {}'.format(connection, int(np.around(total))))
-        self._log(logging.INFO, 'Bandit perceived as best: ' + max(self.learner.bandits, key=self.learner.bandits.get))
+        self._log(logging.INFO, 'Bandit perceived as best: {}'
+                  .format(max(self.learner.bandits, key=self.learner.bandits.get)))
 
     class MultiLearner():
         """A learner that is capable of using and updating multiple models.
@@ -482,7 +495,7 @@ class MultiAgent(FeatureAgent):
         """
         def __init__(self, addrs, num_of_features, std,
                      centroid_rate=0.01, weight_rate=0.2, e=0.2, reg_weight=0.5):
-            '''
+            """
             :param list addrs:
                 Addresses of the agents that are modeled.
             :param int num_of_features:
@@ -493,7 +506,7 @@ class MultiAgent(FeatureAgent):
                 Learning rate for centroids.
             :param float weight_rate:
                 Learning rate for weights.
-            '''
+            """
             self.centroid_rate = centroid_rate
             self.weight_rate = weight_rate
             self.num_of_features = num_of_features
@@ -537,16 +550,18 @@ class MultiAgent(FeatureAgent):
             return np.array(transformation)
 
         def _sgd_estimate(self, addr, features):
-            '''Estimate value the SGD model.
-            Returns the estimate and individual values for different features.'''
+            """Estimate value the SGD model.
+            Returns the estimate and individual values for different features.
+            """
             vals = np.zeros(self.num_of_features)
             for i in range(self.num_of_features):
                 vals[i] = gaus_pdf(features[i], self.centroids[addr][i], self.std) / self.max
             estimate = np.sum(self.sgd_weights[addr] * vals)
             return estimate, vals
 
-        def update_bandit(self, true_value, addr, discount_factor=0, learning_factor=0.9):
-            '''
+        def update_bandit(self, true_value, addr, discount_factor=0,
+                          learning_factor=0.9):
+            """
             Updates the Q-value for addr.
 
             :param true_value:
@@ -557,12 +572,12 @@ class MultiAgent(FeatureAgent):
                 Controls how much the reward from future is discounted.
             :param learning_factor:
                 Controls learning speed.
-            '''
+            """
             old_value = self.bandits[addr]
             self.bandits[addr] += learning_factor * (true_value + discount_factor * old_value - old_value)
 
         def update_sgd(self, true_value, addr, features):
-            '''
+            """
             Uses SGD to update weights and centroid for the SGD model.
             :param true_value:
                 The evaluation of the artifact from addr.
@@ -570,7 +585,7 @@ class MultiAgent(FeatureAgent):
                 The connection that will be updated.
             :param features:
                 Objective features of an artifact.
-            '''
+            """
             estimate, vals = self._sgd_estimate(addr, features)
 
             error = true_value - estimate
@@ -604,14 +619,14 @@ class MultiAgent(FeatureAgent):
             self.poly_weights[addr] += self.weight_rate * gradient
 
         def sgd_choose(self, features):
-            '''
+            """
             Choose a connection with the SGD model.
 
             :param features:
                 Objective features of an artifact.
             :return:
                 The chosen connection's address.
-            '''
+            """
             if np.random.rand() < self.e:
                 return np.random.choice(list(self.sgd_weights.keys()))
 
@@ -643,14 +658,11 @@ class MultiAgent(FeatureAgent):
             return best_addr
 
         def bandit_choose(self):
-            '''
-            Choose a connection with the Q-learning model.
+            """Choose a connection with the Q-learning model.
 
-            :param features:
-                Objective features of an artifact.
             :return:
                 The chosen connection's address.
-            '''
+            """
             if np.random.rand() < self.e:
                 return np.random.choice(list(self.bandits.keys()))
 
@@ -682,7 +694,9 @@ class MultiAgent(FeatureAgent):
             return best_addr
 
 
-class GeneticImageAgent(FeatureAgent):
+class GPImageAgent(FeatureAgent):
+    """Agent creating images with genetic programming.
+    """
     def __init__(self, *args, **kwargs):
         save_folder = kwargs.pop('save_folder', None)
         cm_name = kwargs.pop('cm_name', None)
@@ -730,11 +744,10 @@ class GeneticImageAgent(FeatureAgent):
         artifacts = self.invent(self.search_width, n_artifacts=1)
         for artifact, _ in artifacts:
             e, fr = self.evaluate(artifact)
-            novelty = None if fr['novelty'] is None else np.around(fr['novelty'], 2)
-            self._log(logging.INFO, 'Created an artifact with evaluation {} (value: {}, novelty: {})'
-                      .format(np.around(e, 2),
-                              np.around(fr['value'], 2),
-                              novelty))
+            n = None if fr['novelty'] is None else np.around(fr['novelty'], 2)
+            self._log(logging.INFO,
+                      'Created an artifact with evaluation {} (v: {}, n: {})'
+                      .format(np.around(e, 2), np.around(fr['value'], 2), n))
             self.add_artifact(artifact)
 
             if e >= self._own_threshold:

@@ -92,7 +92,8 @@ class GeneticImageArtifact(Artifact):
 
 
     @staticmethod
-    def save_artifact(artifact, folder, id, eval, pset, color_map, shape=(400, 400)):
+    def save_artifact(artifact, folder, id, eval, pset, color_map,
+                      shape=(400, 400)):
         '''
         Saves an artifact as .png.
         :param artifact:

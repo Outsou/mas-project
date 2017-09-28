@@ -73,6 +73,9 @@ TODO
 COMMIT_MSG
 mgr_addrs.txt
 *.png
+*.bmp
+*.jpg
+*.jpeg
 *.p
 *.txt
 *.xml
