@@ -22,17 +22,20 @@ def fractal_dimension(image):
         return 0
     scales = np.logspace(1, 8, num=20, endpoint=False, base=2)
     scales = scales[scales < image.shape[0] & image.shape[1]]
-    Ns = []
+    ns = []
+    vs = []
     for scale in scales:
-        H, edges = np.histogramdd(pixels,
-                                  bins=(np.arange(0, lx, scale),
-                                        np.arange(0, ly, scale)))
+        x_bins = np.arange(0, lx, scale)
+        x_bins = np.concatenate((x_bins, [lx])) if x_bins[-1] < lx else x_bins
+        y_bins = np.arange(0, ly, scale)
+        y_bins = np.concatenate((y_bins, [ly])) if y_bins[-1] < ly else y_bins
+        H, edges = np.histogramdd(pixels, bins=(x_bins, y_bins))
         H_sum = np.sum(H > 0)
-        if H_sum == 0:
-            H_sum = 1
-        Ns.append(H_sum)
+        if H_sum > 0:
+            ns.append(H_sum)
+            vs.append(scale)
 
-    coeffs = np.polyfit(np.log(scales), np.log(Ns), 1)
+    coeffs = np.polyfit(np.log(vs), np.log(ns), 1)
     hausdorff_dim = -coeffs[0]
 
     return hausdorff_dim
