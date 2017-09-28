@@ -41,7 +41,7 @@ class FeatureAgent(RuleAgent):
     Should work with any artifact class that implements distance, max_distance,
     and invent functions.'''
     def __init__(self, environment, artifact_cls, create_kwargs, rules,
-                 rule_weights = None, novelty_weight=0.5, search_width=10,
+                 rule_weights=None, novelty_weight=0.5, search_width=10,
                  critic_threshold=0.5, veto_threshold=0.5,
                  log_folder=None, log_level=logging.INFO, memsize=0):
         '''
@@ -90,6 +90,7 @@ class FeatureAgent(RuleAgent):
 
         for i in range(len(rules)):
             self.add_rule(rules[i], rule_weights[i])
+
 
     def novelty(self, artifact):
         '''Novelty of an artifact w.r.t agent's memory.'''
@@ -148,7 +149,7 @@ class FeatureAgent(RuleAgent):
     @aiomas.expose
     async def act(self):
         # Create and evaluate an artifact
-        artifacts = self.invent(self.search_width, n_artifacts=2)
+        artifacts = self.invent(self.search_width, n_artifacts=1)
         for artifact, _ in artifacts:
             eval, framings = self.evaluate(artifact)
             novelty = None if framings['novelty'] is None else np.around(framings['novelty'], 2)
@@ -661,5 +662,65 @@ class MultiAgent(FeatureAgent):
             return best_addr
 
 
-class CollaboratorAgent(MultiAgent):
-    pass
+class GeneticImageAgent(FeatureAgent):
+    def __init__(self, *args, **kwargs):
+        save_folder = kwargs.pop('save_folder', None)
+        cm_name = kwargs.pop('cm_name', None)
+        self.output_shape = kwargs.pop('output_shape', (64, 64))
+        super().__init__(*args, **kwargs)
+        self.pset = kwargs['create_kwargs']['pset']
+
+        self.save_id = 1
+        if save_folder is not None:
+            self.artifact_save_folder = os.path.join(save_folder,
+                                                     self.sanitized_name())
+            self._recreate_save_folder()
+            self.color_map = self._create_color_map(cm_name)
+
+    def _recreate_save_folder(self):
+        import shutil
+        if os.path.exists(self.artifact_save_folder):
+            shutil.rmtree(self.artifact_save_folder)
+        os.makedirs(self.artifact_save_folder)
+
+    def _create_color_map(self, cm_name):
+        from matplotlib import cm
+        cm_name = 'viridis' if cm_name is None else cm_name
+        x = np.linspace(0.0, 1.0, 256)
+        return cm.get_cmap(cm_name)(x)[np.newaxis, :, :3][0]
+
+    def save_artifact(self, a):
+        if self.artifact_save_folder is None:
+            return
+
+        self._log(logging.INFO, "Saving artifact {} with output shape {}"
+                  .format(self.save_id, self.output_shape))
+        self.artifact_cls.save_artifact(a,
+                                        self.artifact_save_folder,
+                                        self.save_id,
+                                        a.evals[self.name],
+                                        self.pset,
+                                        self.color_map,
+                                        self.output_shape)
+        self.save_id += 1
+
+    @aiomas.expose
+    async def act(self):
+        # Create and evaluate an artifact
+        artifacts = self.invent(self.search_width, n_artifacts=1)
+        for artifact, _ in artifacts:
+            e, fr = self.evaluate(artifact)
+            novelty = None if fr['novelty'] is None else np.around(fr['novelty'], 2)
+            self._log(logging.INFO, 'Created an artifact with evaluation {} (value: {}, novelty: {})'
+                      .format(np.around(e, 2),
+                              np.around(fr['value'], 2),
+                              novelty))
+            self.add_artifact(artifact)
+
+            if e >= self._own_threshold:
+                self.learn(artifact)
+
+            # Save artifact to save folder
+            self.save_artifact(artifact)
+
+

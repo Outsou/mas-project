@@ -1,13 +1,36 @@
 import numpy as np
+import math
 import time
 
 from noise import snoise2, pnoise1, pnoise2
 
 MINVAL = 0.00001
 
+HVAL = 10
+
+
+def _check_hval(x):
+    if x > HVAL:
+        return HVAL
+    elif x < -HVAL:
+        return -HVAL
+    return x
+
 
 def combine(num1, num2, num3):
     return [float(num1), float(num2), float(num3)]
+
+
+def safe_log10(x):
+    if x <= 0:
+        x = MINVAL
+    return math.log10(x)
+
+
+def safe_log2(x):
+    if x <= 0:
+        x = MINVAL
+    return math.log2(x)
 
 
 def safe_exp(x):
@@ -28,6 +51,17 @@ def safe_mod(a, b):
     if b == 0:
         b = MINVAL
     return a % b
+
+
+def safe_cosh(x):
+    x = _check_hval(x)
+    return math.cosh(x)
+
+
+def safe_sinh(x):
+    x = _check_hval(x)
+    return math.sinh(x)
+
 
 def mdist(a, b):
     return np.abs(a-b)
@@ -59,3 +93,12 @@ def perlin2(x, y):
     return pnoise2(x, y)
 
 
+def plasma(x, y, t, scale):
+    if scale < 0:
+        scale = MINVAL
+    v1 = math.sin(x * scale + t)
+    v2 = math.sin(scale * (x * math.sin(t / 2) + y * math.cos(t / 3)) + t)
+    cx = x + 1.0 * math.sin(t / 5)
+    cy = y + 1.0 * math.cos(t / 3)
+    v3 = math.sin(math.sqrt(scale**2 * (cx**2 + cy**2) + 1) + t)
+    return v1 + v2 + v3

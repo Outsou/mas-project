@@ -1,6 +1,6 @@
 from utils.serializers import *
 from environments import StatEnvironment
-from utils.math import *
+import utils.math as m
 from utils.bitwise import *
 from features import *
 
@@ -71,12 +71,26 @@ def get_image_rules(img_shape):
     rules['complexity'] = complexity_rule
     intensity_rule = RuleLeaf(ft.ImageIntensityFeature(), LinearMapper(0, 1, '01'))
     rules['intensity'] = intensity_rule
+    fd_aesthetics_rule = RuleLeaf(ImageFDAestheticsFeature(), LinearMapper(0, 1, '01'))
+    rules['fd_aesthetics'] = fd_aesthetics_rule
     benford_rule = RuleLeaf(ImageBenfordsLawFeature(), LinearMapper(0, 1, '01'))
     rules['benford'] = benford_rule
     colorfulness_rule = RuleLeaf(ImageColorfulnessFeature(), LinearMapper(0, 1, '01'))
     rules['colorfulness'] = colorfulness_rule
     entropy_rule = RuleLeaf(ImageEntropyFeature(), LinearMapper(0, 1, '01'))
     rules['entropy'] = entropy_rule
+    # horizontal symmetry
+    hsymm_rule = RuleLeaf(ImageSymmetryFeature(axis=1), LinearMapper(0, 1, '01'))
+    rules['hsymm'] = hsymm_rule
+    # vertical symmetry
+    vsymm_rule = RuleLeaf(ImageSymmetryFeature(axis=2), LinearMapper(0, 1, '01'))
+    rules['vsymm'] = vsymm_rule
+    # diagonal symmetry
+    dsymm_rule = RuleLeaf(ImageSymmetryFeature(axis=4), LinearMapper(0, 1, '01'))
+    rules['dsymm'] = dsymm_rule
+    # All symmetries
+    symm_rule = RuleLeaf(ImageSymmetryFeature(axis=7), LinearMapper(0, 1, '01'))
+    rules['symm'] = symm_rule
     return rules
 
 
@@ -88,27 +102,27 @@ def create_pset():
 
     # Basic math
     pset.addPrimitive(operator.mul, [float, float], float)
-    pset.addPrimitive(safe_div, [float, float], float)
+    pset.addPrimitive(m.safe_div, [float, float], float)
     pset.addPrimitive(operator.add, [float, float], float)
     pset.addPrimitive(operator.sub, [float, float], float)
-    pset.addPrimitive(safe_mod, [float, float], float)
+    pset.addPrimitive(m.safe_mod, [float, float], float)
 
     # Relational
     pset.addPrimitive(min, [float, float], float)
     pset.addPrimitive(max, [float, float], float)
 
     # Other math
-    #pset.addPrimitive(math.log2, [float], float)
-    #pset.addPrimitive(math.log10, [float], float)
+    pset.addPrimitive(m.safe_log2, [float], float)
+    pset.addPrimitive(m.safe_log10, [float], float)
     pset.addPrimitive(np.sin, [float], float)
     pset.addPrimitive(np.cos, [float], float)
-    pset.addPrimitive(math.sinh, [float], float)
-    pset.addPrimitive(math.cosh, [float], float)
+    pset.addPrimitive(m.safe_sinh, [float], float)
+    pset.addPrimitive(m.safe_cosh, [float], float)
     pset.addPrimitive(math.tanh, [float], float)
     pset.addPrimitive(math.atan, [float], float)
     pset.addPrimitive(math.hypot, [float, float], float)
     pset.addPrimitive(np.abs, [float], float)
-    pset.addPrimitive(abs_sqrt, [float], float)
+    pset.addPrimitive(m.abs_sqrt, [float], float)
 
     #pset.addPrimitive(exp, [float], float)
 
@@ -116,18 +130,22 @@ def create_pset():
 
     #pset.addEphemeralConstant('rand', lambda: np.random.random() * 2 - 1, float)
     pset.addPrimitive(np.sign, [float], float)
-    pset.addPrimitive(mdist, [float, float], float)
+    pset.addPrimitive(m.mdist, [float, float], float)
 
     # Noise
-    pset.addPrimitive(simplex2, [float, float], float)
-    pset.addPrimitive(perlin2, [float, float], float)
-    pset.addPrimitive(perlin1, [float], float)
+    pset.addPrimitive(m.simplex2, [float, float], float)
+    pset.addPrimitive(m.perlin2, [float, float], float)
+    pset.addPrimitive(m.perlin1, [float], float)
+
+    # Plasma
+    pset.addPrimitive(m.plasma, [float, float, float, float], float)
 
     # Bitwise
     pset.addPrimitive(float_or, [float, float], float)
     pset.addPrimitive(float_xor, [float, float], float)
     pset.addPrimitive(float_and, [float, float], float)
 
+    # Constants
     pset.addTerminal(1.6180, float) # Golden ratio
     pset.addTerminal(np.pi, float)
 

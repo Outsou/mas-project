@@ -147,9 +147,9 @@ class ImageEntropyFeature(Feature):
 
 
 class ImageComplexityFeature(Feature):
-    '''Feature that estimates the fractal dimension of an image.
+    """Feature that estimates the fractal dimension of an image.
     The color values must be in range [0, 255] and type ``int``.
-    '''
+    """
     def __init__(self):
         super().__init__('image_complexity', ['image'], float)
 
@@ -159,6 +159,92 @@ class ImageComplexityFeature(Feature):
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         edges = cv2.Canny(img, 100, 200)
         return float(fractal_dimension(edges))
+
+
+class ImageFDAestheticsFeature(Feature):
+    """Computes aesthetics from the fractal dimension. The value of the image
+    is higher the closer the image's fractal dimension is to 1.35. The actual
+    value function is ``max(0, 1 - |1.35 - fd(I)|)``.
+    """
+    def __init__(self):
+        super().__init__('image_complexity', ['image'], float)
+
+    def extract(self, artifact):
+        img = artifact.obj
+        if len(img.shape) == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        edges = cv2.Canny(img, 100, 200)
+        return max(0.0, 1 - abs(1.35 - float(fractal_dimension(edges))))
+
+
+class ImageSymmetryFeature(Feature):
+    """Compute symmetry of the image in given axis.
+    """
+    HORIZONTAL = 1
+    VERTICAL = 2
+    DIAGONAL = 4
+
+    def __init__(self, axis, use_entropy=True):
+        super().__init__('image_symmetry', ['image'], float)
+        self.axis = axis
+        self.threshold = 13
+        b = "{:0>3b}".format(self.axis)
+        self.horizontal = int(b[2])
+        self.vertical = int(b[1])
+        self.diagonal = int(b[0])
+        self.liveliness = use_entropy
+
+    def _hsymm(self, left, right):
+        fright = np.fliplr(right)
+        delta = np.abs(left-fright)
+        t = delta <= self.threshold
+        sim = np.sum(t) / (left.shape[0] * left.shape[1])
+        return sim
+
+    def _vsymm(self, up, down):
+        fdown = np.flipud(down)
+        delta = np.abs(up-fdown)
+        t = delta <= self.threshold
+        sim = np.sum(t) / (up.shape[0] * up.shape[1])
+        return sim
+
+    def _dsymm(self, ul, ur, dl, dr):
+        fdr = np.fliplr(np.flipud(dr))
+        fur = np.fliplr(np.flipud(ur))
+        d1 = np.abs(ul - fdr)
+        d2 = np.abs(dl - fur)
+        t1 = d1 <= self.threshold
+        t2 = d2 <= self.threshold
+        s1 = np.sum(t1) / (ul.shape[0] * ul.shape[1])
+        s2 = np.sum(t2) / (ul.shape[0] * ul.shape[1])
+        return (s1 + s2) / 2
+
+    def extract(self, artifact):
+        img = artifact.obj
+        if len(img.shape) == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+        cx = int(img.shape[0] / 2)
+        cy = int(img.shape[1] / 2)
+        n = 0
+        symms = 0.0
+        liv = 1.0
+        if self.horizontal:
+            symms += self._hsymm(img[:, :cx], img[:, cx:])
+            n += 1
+        if self.vertical:
+            symms += self._vsymm(img[:cy, :], img[cy:, :])
+            n += 1
+        if self.diagonal:
+            symms += self._dsymm(img[:cy, :cx], img[:cy, cx:],
+                                 img[cy:, :cx], img[cy:, cx:])
+            n += 1
+        if self.liveliness:
+            ie = ImageEntropyFeature()
+            liv = ie(artifact)
+
+        return float(liv * (symms / n))
+
 
 
 """
