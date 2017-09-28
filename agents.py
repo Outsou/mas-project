@@ -397,7 +397,7 @@ class MultiAgent(FeatureAgent):
 
     async def send_artifact(self, addr, artifact, eval, framings=None):
         remote_agent = await self.env.connect(addr)
-        await remote_agent.give_artifact(artifact, eval, framings)
+        await remote_agent.give_artifact(artifact, eval, self.addr)
 
     @aiomas.expose
     def give_artifact(self, artifact, eval, addr):
@@ -429,7 +429,7 @@ class MultiAgent(FeatureAgent):
             if non_active_send:
                 # Send artifact to the active agent
                 addr = list(self.connections)[0]
-                await self.send_artifact(addr, artifact, eval, self.addr)
+                await self.send_artifact(addr, artifact, eval)
             self.update_means()
             return
 
