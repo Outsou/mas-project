@@ -20,7 +20,8 @@ def fractal_dimension(image):
     ly = image.shape[0]
     if len(pixels) < 2:
         return 0
-    scales = np.logspace(1, 4, num=20, endpoint=False, base=2)
+    scales = np.logspace(1, 8, num=20, endpoint=False, base=2)
+    scales = scales[scales < image.shape[0] & image.shape[1]]
     Ns = []
     for scale in scales:
         H, edges = np.histogramdd(pixels,
