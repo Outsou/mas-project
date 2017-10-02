@@ -1,3 +1,5 @@
+from agents import agent_name_parse
+
 from creamas.mp import MultiEnvironment
 from creamas.util import run
 
@@ -60,13 +62,6 @@ class StatEnvironment(MultiEnvironment):
         :param folder:
             The folder where the artifacts are saved.
         '''
-        def agent_name_parse(name):
-            '''Converts the name of an agent into a file path friendly format.'''
-            parsed_name = name.replace('://', '_')
-            parsed_name = parsed_name.replace(':', '_')
-            parsed_name = parsed_name.replace('/', '_')
-            return parsed_name
-
         agents = self.get_agents(addr=False)
         for agent in agents:
             name = run(agent.get_name())
