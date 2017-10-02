@@ -19,7 +19,7 @@ import copy
 import math
 
 
-MAX_DEPTH = 11
+MAX_DEPTH = 8
 
 
 def create_environment(num_of_slaves):

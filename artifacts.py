@@ -1,4 +1,5 @@
 import os
+from io import BytesIO
 
 from creamas.core.artifact import Artifact
 
@@ -182,7 +183,7 @@ class GeneticImageArtifact(Artifact):
             image[x, y, :] = np.around(func(x_normalized, y_normalized))
         """
         # Clip values in range [0, 255]
-        image = np.clip(img, 0, 255, out=img)
+        img = np.clip(img, 0, 255, out=img)
         return np.uint8(img)
 
     @staticmethod
@@ -212,6 +213,23 @@ class GeneticImageArtifact(Artifact):
         artifact = GeneticImageArtifact(agent, individual.image, individual, gp.compile(individual, individual.pset))
         evaluation, _ = agent.evaluate(artifact)
         return evaluation,
+
+    @staticmethod
+    def png_compression_ratio(artifact):
+        """Compute png compression ratio for the image of the given artifact.
+
+        PNG compression ratio: size(png) / size(bmp)
+
+        If ratio is low (< 0.08), then the image can be seen as uninteresting.
+        """
+        img = artifact.obj
+        bmp_size = (img.shape[0] * img.shape[1]) + 1078
+        # Write image to byte io as png and measure its length.
+        temp_file = BytesIO()
+        misc.imsave(temp_file, img, 'png')
+        png_size = temp_file.getbuffer().nbytes
+        ratio = png_size / bmp_size
+        return ratio
 
     @staticmethod
     def evolve_population(population, generations, toolbox, pset, hall_of_fame,

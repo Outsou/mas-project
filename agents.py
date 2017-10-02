@@ -5,6 +5,8 @@ from creamas.rules.rule import RuleLeaf
 from creamas.mappers import GaussianMapper
 from creamas.math import gaus_pdf
 
+from artifacts import GeneticImageArtifact as GIA
+
 import logging
 import aiomas
 import numpy as np
@@ -108,7 +110,8 @@ class FeatureAgent(RuleAgent):
 
     @aiomas.expose
     def evaluate(self, artifact):
-        '''Evaluates an artifact based on value and novelty'''
+        """Evaluates an artifact based on value and novelty.
+        """
         if self.name in artifact.evals:
             return artifact.evals[self.name], artifact.framings[self.name]
 
@@ -747,6 +750,30 @@ class GPImageAgent(FeatureAgent):
                                         self.color_map,
                                         self.output_shape)
         self.save_id += 1
+
+    @aiomas.expose
+    def evaluate(self, artifact):
+        """Evaluates an artifact based on value and novelty.
+        """
+        if self.name in artifact.evals:
+            return artifact.evals[self.name], artifact.framings[self.name]
+
+        evaluation = value = 0.0
+        novelty = None
+
+        # Test png image compression. If image is compressed to less that 8% of
+        # the original (bmp image has 1078 bytes overhead in black & white
+        # images), then the image is deemed too simple and evaluation is 0.0.
+        if GIA.png_compression_ratio(artifact) >= 0.08:
+            value, _ = super().evaluate(artifact)
+            evaluation = value
+            if self.novelty_weight != -1:
+                novelty = self.novelty(artifact)
+                evaluation = (1 - self.novelty_weight) * value + self.novelty_weight * novelty
+
+        fr = {'value': value, 'novelty': novelty}
+        artifact.add_eval(self, evaluation, fr)
+        return evaluation, fr
 
     @aiomas.expose
     async def act(self):
