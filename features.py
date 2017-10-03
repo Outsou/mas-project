@@ -1,5 +1,7 @@
-from creamas.rules.feature import Feature
+from functools import reduce
 
+from creamas.rules.feature import Feature
+from scipy.stats import norm
 import numpy as np
 import cv2
 
@@ -132,6 +134,10 @@ class ImageMeanHueFeature(Feature):
 
 
 class ImageEntropyFeature(Feature):
+    """Compute entropy of an image and normalize it to interval [0, 1].
+
+    Entropy computation uses 256 bins and a grey scale image.
+    """
     def __init__(self):
         super().__init__('image_entropy', ['image'], float)
         # Max entropy for 256 bins, i.e. the histogram has even distribution
@@ -152,6 +158,7 @@ class ImageEntropyFeature(Feature):
 
 class ImageComplexityFeature(Feature):
     """Feature that estimates the fractal dimension of an image.
+
     The color values must be in range [0, 255] and type ``int``.
     """
     def __init__(self):
@@ -166,9 +173,10 @@ class ImageComplexityFeature(Feature):
 
 
 class ImageFDAestheticsFeature(Feature):
-    """Computes aesthetics from the fractal dimension. The value of the image
-    is higher the closer the image's fractal dimension is to 1.35. The actual
-    value function is ``max(0, 1 - |1.35 - fd(I)|)``.
+    """Computes aesthetics from the fractal dimension.
+
+    The value of the feature is higher the closer the image's fractal dimension
+    is to 1.35. The precise value function is ``max(0, 1 - |1.35 - fd(I)|)``.
     """
     def __init__(self):
         super().__init__('image_complexity', ['image'], float)
@@ -182,7 +190,23 @@ class ImageFDAestheticsFeature(Feature):
 
 
 class ImageSymmetryFeature(Feature):
-    """Compute symmetry of the image in given axis.
+    """Compute symmetry of the image in given ax or combination of axis.
+
+    Feature also allows adding the computed symmetry with "liveliness" of the
+    image using ``use_entropy=True``. If entropy is not used, simple images
+    (e.g. plain color images) will give high symmetry values.
+
+    :param axis:
+        :attr:`ImageSymmetryFeature.HORIZONTAL`,
+        :attr:`ImageSymmetryFeature.VERTICAL`, and/or
+        :attr:`ImageSymmetryFeature.DIAGONAL`.
+
+        These can be combined, e.g. ``axis=ImageSymmetryFeature.HORIZONTAL+
+        ImageSymmetryFeature.VERTICAL``.
+
+    :param bool use_entropy:
+        If ``True`` multiples the computed symmetry value with image's entropy
+        ("liveliness").
     """
     HORIZONTAL = 1
     VERTICAL = 2
@@ -248,6 +272,153 @@ class ImageSymmetryFeature(Feature):
             liv = ie(artifact)
 
         return float(liv * (symms / n))
+
+
+class ImageBellCurveFeature(Feature):
+    """Compute Ross, Ralph and Zong image aesthetic measure, also known as
+    bell curve measure.
+    """
+    def __init__(self):
+        super().__init__('image_bell_curve', ['image'], float)
+
+    def _gradient(self, ch):
+        w, h = ch.shape
+        g = np.zeros((w - 1, h - 1), dtype=np.float64)
+        #d = 0.1 * np.sqrt((w**2 + h**2)) / 2.0
+        d = 1.0
+        for x in range(w - 1):
+            for y in range(h - 1):
+                g1 = np.float_power(float(ch[x][y]) - float(ch[x + 1][y + 1]), 2)
+                g2 = np.float_power(float(ch[x][y + 1]) - float(ch[x + 1][y]), 2)
+                g[x][y] = (g1 + g2) / d ** 2
+                #print(x, y, g1, g2, ch[x][y], ch[x + 1][y + 1], ch[x + 1][y],
+                #      ch[x][y + 1], g[x][y])
+        return g
+
+    def _combine_gradients(self, grs):
+        total_gradient = reduce(lambda x, y: x + y, grs)
+        return np.sqrt(total_gradient)
+
+    def _dfn(self, hg, bins, mean, std):
+        # Gaussian distribution's cdf's in bin intersections
+        cdfs = norm.cdf(bins, loc=mean, scale=std)
+        # Gaussian distribution's probability for each bin
+        qi = np.array([cdfs[i] - cdfs[i - 1] for i in range(1, len(cdfs))])
+
+        # a lot of filtering so that taking a logarithm does not mess things
+        hg_filtered = hg[qi != 0]
+        qi_filtered = qi[qi != 0]
+        pq = hg_filtered / qi_filtered
+        pq_filtered = pq[pq != 0]
+        hg_filtered = hg_filtered[pq != 0]
+        return np.sum(hg_filtered * np.log(pq_filtered))
+
+    def extract(self, artifact):
+        img = artifact.obj
+        if len(img.shape) == 2:
+            s = self._combine_gradients([self._gradient(img)])
+        else:
+            grs = [self._gradient(img[:, :, i]) for i in range(3)]
+            s = self._combine_gradients(grs)
+        # Here s0 = 2 is used for both gray and color images. However, it is
+        # not exactly clear if it should be 2 for gray images.
+        r = s / 2.0
+        rsum = np.sum(r)
+        mean = np.sum(np.float_power(r, 2)) / rsum
+        #std = np.sqrt(np.sum(np.float_power(r - mean, 2)) / (r.shape[0] * r.shape[1]))
+        std = np.sum(r * ((r - mean) ** 2)) / rsum
+        maxr = np.max(r)
+        s100 = np.sqrt(std) / 100
+        bins = np.concatenate((np.arange(0, maxr, s100), [maxr]))
+        # Density histogram of the bins
+        hg = np.histogram(r, bins, weights=r)[0]
+        dhg = hg / np.sum(hg)
+        dfn = float(self._dfn(dhg, bins, mean, std))
+        print("DFN: {}, mean: {}, std: {}".format(dfn, mean, std))
+        return dfn / 100
+
+
+class ImageGlobalContrastFactorFeature(Feature):
+    """Compute global contrast factor from an image.
+    """
+    def __init__(self):
+        super().__init__('image_global_contrast_factor', ['image'], float)
+        self.gamma = 2.2
+        self.m1 = -0.406385   # Magic number 1
+        self.m2 = 0.334573   # Magic number 2
+        self.m3 = 0.0877526  # Magic number 3
+        self.sps = [1, 2, 4, 8, 16, 25, 50, 100, 200]  # Super pixel sizes
+
+    def m_func(self, x):
+        return (self.m1 * x + self.m2) * (x + self.m3)
+
+    def zoom(self, img, scale):
+        """Compute a new image with super pixels of a given scale.
+        """
+        if scale == 1:
+            return img
+        bins = [e for e in range(scale, img.shape[0], scale)]
+        # Split image to super pixels
+        split_img = np.split(img, bins)
+        for i,e in enumerate(split_img):
+            split_img[i] = np.split(e, bins, axis=-1)
+        zoom_img = np.zeros((len(split_img), len(split_img[0])))
+        #print(zoom_img.shape, scale)
+        # Compute super pixel values as the average of luminances
+        for x in range(len(split_img)):
+            for y in range(len(split_img[0])):
+                n_pixels = split_img[x][y].shape[0] * split_img[x][y].shape[1]
+                zoom_img[x, y] = np.sum(split_img[x][y]) / n_pixels
+        return zoom_img
+
+    def contrast(self, img, scale):
+        """Compute contrast on a given superpixel scale.
+        """
+        zoom_img = self.zoom(img, scale)
+        #print(zoom_img.shape)
+        sum_contrast = 0
+        for x in range(zoom_img.shape[0]):
+            for y in range(zoom_img.shape[1]):
+                px = zoom_img[x, y]
+                l = 0.0
+                d = 0
+                if x > 0:
+                    l += abs(px - zoom_img[x - 1][y])
+                    d += 1
+                if y > 0:
+                    l += abs(px - zoom_img[x][y - 1])
+                    d += 1
+                if x < zoom_img.shape[0] - 1:
+                    l += abs(px - zoom_img[x + 1][y])
+                    d += 1
+                if y < zoom_img.shape[1] - 1:
+                    l += abs(px - zoom_img[x][y + 1])
+                    d += 1
+                local_contrast = l / d
+                sum_contrast += local_contrast
+        avg_contrast = sum_contrast / (zoom_img.shape[0] * zoom_img.shape[1])
+        return avg_contrast
+
+    def extract(self, artifact):
+        img = artifact.obj
+        if len(img.shape) == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+        # Gamma correction
+        gamma_img = (img / 255.0) ** 2.2
+        # Perceptual luminance
+        pl_img = 100 * np.sqrt(gamma_img)
+        scales = [e for e in self.sps if e < img.shape[0] and e < img.shape[1]]
+        # TODO: use smaller scales as intermediate steps to compute larger.
+        contrasts = [self.contrast(pl_img, scale) for scale in scales]
+        #print(contrasts)
+        wc = [self.m_func(i/len(scales)) * c for i, c in enumerate(contrasts)]
+        #print(wc)
+        gcf = np.sum(wc)
+        #print(gcf)
+        return float(gcf) / 10.0
+
+
 
 
 

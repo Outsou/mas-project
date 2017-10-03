@@ -91,11 +91,11 @@ def test_fitness_rules(rule_names,
 
 
 if __name__ == "__main__":
-    test_fitness_rules(('fd_aesthetics', 'entropy'),
-                       (1.0, 1.0),
-                       steps=20,
+    test_fitness_rules(('global_contrast_factor',),
+                       (1.0,),
+                       steps=10,
                        pop_size=20,
                        search_width=10,
                        log_folder='gp_test_logs',
-                       save_folder='gp_test_fda')
+                       save_folder='gp_test_gcf')
 

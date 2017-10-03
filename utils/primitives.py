@@ -1,6 +1,6 @@
-import numpy as np
 import math
-import time
+
+import numpy as np
 
 from noise import snoise2, pnoise1, pnoise2
 

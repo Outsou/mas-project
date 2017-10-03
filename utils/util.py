@@ -1,8 +1,9 @@
 from utils.serializers import *
 from environments import StatEnvironment
-import utils.math as m
+import utils.primitives as m
 from utils.bitwise import *
 from features import *
+from utils.pink_noise import sample_pink
 
 from creamas.mp import MultiEnvManager, EnvManager
 from creamas.core import Environment
@@ -58,7 +59,8 @@ def create_environment(num_of_slaves):
 
 
 def get_image_rules(img_shape):
-    '''Creates a dictionary of RuleLeafs for images.'''
+    """Creates a dictionary of RuleLeafs for images.
+    """
 
     rules = {}
     red_rule = RuleLeaf(ft.ImageRednessFeature(), LinearMapper(0, 1, '01'))
@@ -79,6 +81,10 @@ def get_image_rules(img_shape):
     rules['colorfulness'] = colorfulness_rule
     entropy_rule = RuleLeaf(ImageEntropyFeature(), LinearMapper(0, 1, '01'))
     rules['entropy'] = entropy_rule
+    bell_curve_rule = RuleLeaf(ImageBellCurveFeature(), LinearMapper(0, 1, '01'))
+    rules['bell_curve'] = bell_curve_rule
+    gcf_rule = RuleLeaf(ImageGlobalContrastFactorFeature(), LinearMapper(0, 1, '01'))
+    rules['global_contrast_factor'] = gcf_rule
     # horizontal symmetry
     hsymm_rule = RuleLeaf(ImageSymmetryFeature(axis=1), LinearMapper(0, 1, '01'))
     rules['hsymm'] = hsymm_rule
@@ -128,7 +134,6 @@ def create_pset():
 
     #pset.addPrimitive(safe_pow, [float, float], float)
 
-    #pset.addEphemeralConstant('rand', lambda: np.random.random() * 2 - 1, float)
     pset.addPrimitive(np.sign, [float], float)
     pset.addPrimitive(m.mdist, [float, float], float)
 
@@ -146,8 +151,10 @@ def create_pset():
     pset.addPrimitive(float_and, [float, float], float)
 
     # Constants
-    pset.addTerminal(1.6180, float) # Golden ratio
+    pset.addEphemeralConstant('pink', sample_pink, float)
+    pset.addTerminal(1.6180, float)  # Golden ratio
     pset.addTerminal(np.pi, float)
+    pset.addEphemeralConstant('rand', lambda: np.random.random() * 2 - 1, float)
 
     pset.renameArguments(ARG0="x")
     pset.renameArguments(ARG1="y")
