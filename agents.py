@@ -38,6 +38,14 @@ def record_stats(stats, key, addr, reward, chose_best):
         stats[key]['chose_best'].append(0)
 
 
+def agent_name_parse(name):
+    '''Converts the name of an agent into a file path friendly format.'''
+    parsed_name = name.replace('://', '_')
+    parsed_name = parsed_name.replace(':', '_')
+    parsed_name = parsed_name.replace('/', '_')
+    return parsed_name
+
+
 class FeatureAgent(RuleAgent):
     '''The base class for agents that use features.
     Should work with any artifact class that implements distance, max_distance,
@@ -442,7 +450,9 @@ class MultiAgent(FeatureAgent):
             return
 
         # Save stats to a file
-        path = self.data_folder
+        path = os.path.join(self.data_folder, agent_name_parse(self.name))
+        if not os.path.exists(path):
+            os.mkdir(path)
         files_in_path = len(os.listdir(path))
         pickle_path = os.path.join(path, 'stats{}.p'.format(files_in_path + 1))
         pickle.dump(self.stats, open(pickle_path, 'wb'))
