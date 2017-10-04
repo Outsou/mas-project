@@ -6,6 +6,7 @@ from creamas.core.artifact import Artifact
 from deap import tools, creator, base
 import deap.gp as gp
 from deap import algorithms
+import cv2
 
 import logging
 import numpy as np
@@ -224,10 +225,11 @@ class GeneticImageArtifact(Artifact):
         """
         img = artifact.obj
         bmp_size = (img.shape[0] * img.shape[1]) + 1078
-        # Write image to byte io as png and measure its length.
-        temp_file = BytesIO()
-        misc.imsave(temp_file, img, 'png')
-        png_size = temp_file.getbuffer().nbytes
+        if len(img.shape) == 3:
+            bmp_size = (img.shape[0] * img.shape[1] * img.shape[2]) + 54
+        _, buf = cv2.imencode('.png', img)
+        png_size = len(buf)
+        del buf
         ratio = png_size / bmp_size
         return ratio
 

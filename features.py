@@ -1,4 +1,5 @@
 from functools import reduce
+import time
 
 from creamas.rules.feature import Feature
 from scipy.stats import norm
@@ -352,8 +353,10 @@ class ImageGlobalContrastFactorFeature(Feature):
     def m_func(self, x):
         return (self.m1 * x + self.m2) * (x + self.m3)
 
-    def zoom(self, img, scale):
+    def resize(self, img, scale):
         """Compute a new image with super pixels of a given scale.
+
+        Returns an image consisting of super pixels.
         """
         if scale == 1:
             return img
@@ -362,41 +365,39 @@ class ImageGlobalContrastFactorFeature(Feature):
         split_img = np.split(img, bins)
         for i,e in enumerate(split_img):
             split_img[i] = np.split(e, bins, axis=-1)
-        zoom_img = np.zeros((len(split_img), len(split_img[0])))
-        #print(zoom_img.shape, scale)
+        sp_img = np.zeros((len(split_img), len(split_img[0])))
         # Compute super pixel values as the average of luminances
         for x in range(len(split_img)):
             for y in range(len(split_img[0])):
                 n_pixels = split_img[x][y].shape[0] * split_img[x][y].shape[1]
-                zoom_img[x, y] = np.sum(split_img[x][y]) / n_pixels
-        return zoom_img
+                sp_img[x, y] = np.sum(split_img[x][y]) / n_pixels
+        return sp_img
 
     def contrast(self, img, scale):
         """Compute contrast on a given superpixel scale.
         """
-        zoom_img = self.zoom(img, scale)
-        #print(zoom_img.shape)
+        sp_img = self.resize(img, scale)
         sum_contrast = 0
-        for x in range(zoom_img.shape[0]):
-            for y in range(zoom_img.shape[1]):
-                px = zoom_img[x, y]
+        for x in range(sp_img.shape[0]):
+            for y in range(sp_img.shape[1]):
+                px = sp_img[x, y]
                 l = 0.0
                 d = 0
                 if x > 0:
-                    l += abs(px - zoom_img[x - 1][y])
+                    l += abs(px - sp_img[x - 1][y])
                     d += 1
                 if y > 0:
-                    l += abs(px - zoom_img[x][y - 1])
+                    l += abs(px - sp_img[x][y - 1])
                     d += 1
-                if x < zoom_img.shape[0] - 1:
-                    l += abs(px - zoom_img[x + 1][y])
+                if x < sp_img.shape[0] - 1:
+                    l += abs(px - sp_img[x + 1][y])
                     d += 1
-                if y < zoom_img.shape[1] - 1:
-                    l += abs(px - zoom_img[x][y + 1])
+                if y < sp_img.shape[1] - 1:
+                    l += abs(px - sp_img[x][y + 1])
                     d += 1
                 local_contrast = l / d
                 sum_contrast += local_contrast
-        avg_contrast = sum_contrast / (zoom_img.shape[0] * zoom_img.shape[1])
+        avg_contrast = sum_contrast / (sp_img.shape[0] * sp_img.shape[1])
         return avg_contrast
 
     def extract(self, artifact):
@@ -419,6 +420,64 @@ class ImageGlobalContrastFactorFeature(Feature):
         return float(gcf) / 10.0
 
 
+class ImageMCFeature(Feature):
+    """Compute aesthetic value by Machado & Cardoso for an image.
+    """
+    def __init__(self):
+        super().__init__('image_machado_cardoso', ['image'], float)
+        self.a = 1.0
+        self.b = 1.0
+        self.c = 1.0
+
+    def jpeg(self, img, quality=75):
+        _, buf = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, quality])
+        jpeg_img = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE)
+        return jpeg_img, len(buf)
+
+    def jpeg2000(self, img):
+        t0 = time.monotonic()
+        _, buf = cv2.imencode('.jp2', img)
+        t1 = time.monotonic()
+        return len(buf), t1 - t0
+
+    def rmse(self, img1, img2):
+        n = img1.shape[0] * img1.shape[1]
+        return np.sqrt(np.sum((img1 - img2) ** 2) / n)
+
+    def image_complexity(self, img):
+        jpeg_img, jpeg_size = self.jpeg(img)
+        #print(jpeg_img.shape, jpeg_img.dtype)
+        # .bmp size
+        original_size = (img.shape[0] * img.shape[1]) + 1078
+        if len(img.shape) == 3:
+            original_size = (img.shape[0] * img.shape[1] * img.shape[2]) + 54
+        ratio = jpeg_size / original_size
+        compression_error = self.rmse(img, jpeg_img)
+        #print(ratio, compression_error)
+        return compression_error * ratio
+
+    def processing_complexity(self, img):
+        jp2, t0 = self.jpeg2000(img)
+        cx = int(img.shape[0] / 2)
+        cy = int(img.shape[1] / 2)
+        qs = [img[:cx, :cy], img[cx:, :cy], img[:cx, cy:], img[cx:, cy:]]
+        t1 = 0.0
+
+        for q in qs:
+            jp2, td = self.jpeg2000(q)
+            t1 += td
+
+        print(t0, t1, t1 - t0)
+        return t0, t1
+
+    def extract(self, artifact):
+        img = artifact.obj
+        if len(img.shape) == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+        ic = self.image_complexity(img)
+        pc = self.processing_complexity(img)
+        return ic
 
 
 

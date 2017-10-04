@@ -102,3 +102,11 @@ def plasma(x, y, t, scale):
     cy = y + 1.0 * math.cos(t / 3)
     v3 = math.sin(math.sqrt(scale**2 * (cx**2 + cy**2) + 1) + t)
     return v1 + v2 + v3
+
+
+def parab(x):
+    return 4 * (x - 0.5) ** 2
+
+
+def avg_sum(x, y):
+    return (x + y) / 2

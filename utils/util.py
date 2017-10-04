@@ -104,7 +104,7 @@ def create_pset():
     """Creates a set of primitives for deap.
     """
     pset = gp.PrimitiveSetTyped("main", [float, float], float)
-    #pset.addPrimitive(combine, [float, float, float], list)
+    pset.addPrimitive(combine, [float, float, float], list)
 
     # Basic math
     pset.addPrimitive(operator.mul, [float, float], float)
@@ -129,13 +129,12 @@ def create_pset():
     pset.addPrimitive(math.hypot, [float, float], float)
     pset.addPrimitive(np.abs, [float], float)
     pset.addPrimitive(m.abs_sqrt, [float], float)
-
-    #pset.addPrimitive(exp, [float], float)
-
-    #pset.addPrimitive(safe_pow, [float, float], float)
-
+    pset.addPrimitive(m.parab, [float], float)
+    pset.addPrimitive(m.avg_sum, [float, float], float)
     pset.addPrimitive(np.sign, [float], float)
     pset.addPrimitive(m.mdist, [float, float], float)
+    #pset.addPrimitive(exp, [float], float)
+    #pset.addPrimitive(safe_pow, [float, float], float)
 
     # Noise
     pset.addPrimitive(m.simplex2, [float, float], float)
