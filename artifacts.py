@@ -111,11 +111,16 @@ class GeneticImageArtifact(Artifact):
         individual = gp.PrimitiveTree.from_string(s, pset)
         func = gp.compile(individual, pset)
         img = GeneticImageArtifact.generate_image(func, shape)
-        color_img = color_map[img]
-        imname = 'bw_artifact{:0>5}_{}.png'.format(id, eval)
-        misc.imsave(os.path.join(folder, imname), img)
+        if len(img.shape) == 2:
+            color_img = color_map[img]
+        else:
+            color_img = img
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         imname = 'artifact{:0>5}_{}.png'.format(id, eval)
         misc.imsave(os.path.join(folder, imname), color_img)
+        imname = 'bw_artifact{:0>5}_{}.png'.format(id, eval)
+        misc.imsave(os.path.join(folder, imname), img)
+
 
         fname = os.path.join(folder, 'f_artifact{:0>5}_{}.txt'.format(id, eval))
         with open(fname, 'w') as f:
@@ -150,8 +155,8 @@ class GeneticImageArtifact(Artifact):
         return np.sqrt(np.sum(distances**2))
 
     @staticmethod
-    def generate_image(func, shape=(32, 32)):
-        '''
+    def generate_image(func, shape=(32, 32), bw=True):
+        """
         Creates an image.
 
         :param func:
@@ -161,16 +166,20 @@ class GeneticImageArtifact(Artifact):
         :return:
             A numpy array containing the color values.
             The format is uint8, because that is what opencv wants.
-        '''
+        """
         width = shape[0]
         height = shape[1]
-        img = np.zeros(shape)
+        if bw:
+            img = np.zeros(shape)
+        else:
+            img = np.zeros((shape[0], shape[1], 3))
         coords = [(x, y) for x in range(width) for y in range(height)]
         for x, y in coords:
             # Normalize coordinates in range [-1, 1]
             x_normalized = x / width * 2 - 1
             y_normalized = y / height * 2 - 1
             img[x, y] = np.around(func(x_normalized, y_normalized))
+            #img[x, y, :] = np.around(func(x_normalized, y_normalized))
 
         """
         image = np.zeros((width, height, 3))

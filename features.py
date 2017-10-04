@@ -3,6 +3,7 @@ import time
 
 from creamas.rules.feature import Feature
 from scipy.stats import norm
+from scipy import misc
 import numpy as np
 import cv2
 
@@ -422,12 +423,26 @@ class ImageGlobalContrastFactorFeature(Feature):
 
 class ImageMCFeature(Feature):
     """Compute aesthetic value by Machado & Cardoso for an image.
+
+    Aesthetic value is computed as :math:`IC^a / PC^b`, where IC is the
+    estimated image complexity and PC is the estimated processing complexity.
+
+    IC is estimated with: :math`(s(c(i)) / s(i)) * RSME(i, c(i))`, where c(i)
+    is the image encoded with jpeg compression, s is the file size function and
+    RSME is the root mean squared error between the compressed and the original
+    image.
+
+    PC is estimated by compressing the image with jpeg2000 standard.
     """
-    def __init__(self):
+    def __init__(self, a=1.0, b=1.0):
+        """
+
+        :param a:
+        :param b:
+        """
         super().__init__('image_machado_cardoso', ['image'], float)
-        self.a = 1.0
-        self.b = 1.0
-        self.c = 1.0
+        self.a = a
+        self.b = b
 
     def jpeg(self, img, quality=75):
         _, buf = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, quality])
@@ -435,14 +450,19 @@ class ImageMCFeature(Feature):
         return jpeg_img, len(buf)
 
     def jpeg2000(self, img):
-        t0 = time.monotonic()
         _, buf = cv2.imencode('.jp2', img)
-        t1 = time.monotonic()
-        return len(buf), t1 - t0
+        jpeg_img = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE)
+        return jpeg_img, len(buf)
+
+    def png(self, img, comp=1):
+        _, buf = cv2.imencode('.png', img, [cv2.IMWRITE_PNG_COMPRESSION, comp])
+        png_img = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE)
+        return png_img, len(buf)
 
     def rmse(self, img1, img2):
         n = img1.shape[0] * img1.shape[1]
-        return np.sqrt(np.sum((img1 - img2) ** 2) / n)
+        delta_img = (img1 * 1.0) - (img2 * 1.0)
+        return np.sqrt(np.sum(delta_img ** 2) / n)
 
     def image_complexity(self, img):
         jpeg_img, jpeg_size = self.jpeg(img)
@@ -453,22 +473,45 @@ class ImageMCFeature(Feature):
             original_size = (img.shape[0] * img.shape[1] * img.shape[2]) + 54
         ratio = jpeg_size / original_size
         compression_error = self.rmse(img, jpeg_img)
-        #print(ratio, compression_error)
         return compression_error * ratio
 
     def processing_complexity(self, img):
+        # Now resulting to this naive way of computing processing complexity
         jp2, t0 = self.jpeg2000(img)
+        original_size = (img.shape[0] * img.shape[1]) + 1078
+        t0_ratio = t0 / original_size
+        return t0_ratio
+        '''
+        jp2, t0 = self.jpeg2000(img)
+        original_size = (img.shape[0] * img.shape[1]) + 1078
+        t0_ratio = t0 / original_size
+        t0_compression_error = self.rmse(jp2, img)
+
         cx = int(img.shape[0] / 2)
         cy = int(img.shape[1] / 2)
         qs = [img[:cx, :cy], img[cx:, :cy], img[:cx, cy:], img[cx:, cy:]]
+        qs = [misc.imresize(q, img.shape, interp='nearest') for q in qs]
+        jps = []
         t1 = 0.0
-
         for q in qs:
-            jp2, td = self.jpeg2000(q)
+            cur_img, td = self.jpeg2000(q)
+            print(td, 400*400+1078)
+            jps.append((cur_img, q))
             t1 += td
-
-        print(t0, t1, t1 - t0)
-        return t0, t1
+        original_size2 = (img.shape[0] * img.shape[1] * 4) + 1078
+        t1_ratio = t1 / original_size2
+        t1_compression_error = 0.0
+        for cur_img, q in jps:
+            t1_compression_error += self.rmse(cur_img, q)
+            print("RMSE: {}".format(t1_compression_error))
+        t1_compression_error = t1_compression_error / 4
+        pc_t0 = t0_ratio * t0_compression_error
+        pc_t1 = t1_ratio * t1_compression_error
+        print(t0_ratio, t0_compression_error, pc_t0, t1_ratio, t1_compression_error, pc_t1)
+        pc = ((pc_t0 * pc_t1) ** 0.4) * ((pc_t1 - pc_t0) / pc_t1) ** 0.2
+        print(pc)
+        return pc
+        '''
 
     def extract(self, artifact):
         img = artifact.obj
@@ -476,8 +519,10 @@ class ImageMCFeature(Feature):
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
         ic = self.image_complexity(img)
+        #print("IC: {}".format(ic))
         pc = self.processing_complexity(img)
-        return ic
+        #print(pc)
+        return float(ic / pc)
 
 
 

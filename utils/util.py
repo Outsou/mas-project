@@ -85,6 +85,8 @@ def get_image_rules(img_shape):
     rules['bell_curve'] = bell_curve_rule
     gcf_rule = RuleLeaf(ImageGlobalContrastFactorFeature(), LinearMapper(0, 1, '01'))
     rules['global_contrast_factor'] = gcf_rule
+    ic_pc_rule = RuleLeaf(ImageMCFeature(), LinearMapper(0, 10, '01'))
+    rules['ic_pc'] = ic_pc_rule
     # horizontal symmetry
     hsymm_rule = RuleLeaf(ImageSymmetryFeature(axis=1), LinearMapper(0, 1, '01'))
     rules['hsymm'] = hsymm_rule
@@ -100,11 +102,14 @@ def get_image_rules(img_shape):
     return rules
 
 
-def create_pset():
+def create_pset(bw=True):
     """Creates a set of primitives for deap.
     """
-    pset = gp.PrimitiveSetTyped("main", [float, float], float)
-    pset.addPrimitive(combine, [float, float, float], list)
+    if bw:
+        pset = gp.PrimitiveSetTyped("main", [float, float], float)
+    else:
+        pset = gp.PrimitiveSetTyped("main", [float, float], list)
+        pset.addPrimitive(m.combine, [float, float, float], list)
 
     # Basic math
     pset.addPrimitive(operator.mul, [float, float], float)
