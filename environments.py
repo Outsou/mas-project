@@ -73,3 +73,8 @@ class StatEnvironment(MultiEnvironment):
             print("Saving {} artifacts from {}".format(len(artifacts), name))
             for i in range(len(artifacts)):
                 artifact_cls.save_artifact(artifacts[i], agent_folder, i, artifacts[i].evals[name], *args, **kwargs)
+
+    def finalize_step(self):
+        agents = self.get_agents(addr=False)
+        for agent in agents:
+            run(agent.finalize_step())

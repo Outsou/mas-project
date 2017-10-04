@@ -3,9 +3,9 @@
 from creamas.rules.agent import RuleAgent
 from creamas.rules.rule import RuleLeaf
 from creamas.mappers import GaussianMapper
-from creamas.math import gaus_pdf
 
 from artifacts import GeneticImageArtifact as GIA
+from learners import MultiLearner
 
 import logging
 import aiomas
@@ -253,7 +253,7 @@ class MultiAgent(FeatureAgent):
     """
     def __init__(self, environment, std, data_folder, active=False,
                  rule_vec=None, reg_weight=0.1, gaussian_updates=False,
-                 send_prob=0, *args, **kwargs):
+                 send_prob=0, own_folder=False, *args, **kwargs):
         """
         :param std:
             Standard deviation for the gaussian distribution used in evaluation.
@@ -285,6 +285,7 @@ class MultiAgent(FeatureAgent):
         self.reg_weight = reg_weight
         self.gaussian_updates = gaussian_updates
         self.send_prob = send_prob
+        self.own_folder = own_folder
 
         if rule_vec is not None:
             assert len(rule_vec) == len(self.R), \
@@ -306,10 +307,10 @@ class MultiAgent(FeatureAgent):
         rets = super().add_connections(conns)
 
         # Initialize the multi-model learner
-        self.learner = MultiAgent.MultiLearner(list(self.connections),
-                                               len(self.R),
-                                               self.std,
-                                               reg_weight=self.reg_weight)
+        self.learner = MultiLearner(list(self.connections),
+                                    len(self.R),
+                                    self.std,
+                                    reg_weight=self.reg_weight)
 
         return rets
 
@@ -414,6 +415,14 @@ class MultiAgent(FeatureAgent):
         self.learner.update_linear_regression(eval, addr, features)
         self.learner.update_bandit(eval, addr)
 
+    def create_artifact(self):
+        artifact, _ = self.artifact_cls.invent(self.search_width, self, self.create_kwargs)
+        features = self.get_features(artifact)
+        eval, _ = self.evaluate(artifact)
+        if eval >= self._own_threshold:
+            self.learn(artifact)
+        return artifact, features, eval
+
     @aiomas.expose
     async def act(self):
         """If active, create an artifact and send it to everyone for evaluation.
@@ -426,11 +435,7 @@ class MultiAgent(FeatureAgent):
 
         # Create an artifact if agent is active or has memory
         if self.active or self.stmem.length > 0 or non_active_send:
-            artifact, _ = self.artifact_cls.invent(self.search_width, self, self.create_kwargs)
-            features = self.get_features(artifact)
-            eval, _ = self.evaluate(artifact)
-            if eval >= self._own_threshold:
-                self.learn(artifact)
+            artifact, features, eval = self.create_artifact()
 
         # Stop here if not the active agent
         if not self.active:
@@ -444,18 +449,24 @@ class MultiAgent(FeatureAgent):
         opinions = await self.gather_opinions(self.connections.keys(), artifact)
         self.learn_and_record(features, opinions)
 
-    @aiomas.expose
-    def close(self, folder=None):
-        if not self.active:
-            return
-
+    def save_stats(self):
         # Save stats to a file
-        path = os.path.join(self.data_folder, agent_name_parse(self.name))
+        if self.own_folder:
+            path = os.path.join(self.data_folder, agent_name_parse(self.name))
+        else:
+            path = self.data_folder
         if not os.path.exists(path):
             os.mkdir(path)
         files_in_path = len(os.listdir(path))
         pickle_path = os.path.join(path, 'stats{}.p'.format(files_in_path + 1))
         pickle.dump(self.stats, open(pickle_path, 'wb'))
+
+    @aiomas.expose
+    def close(self, folder=None):
+        if not self.active:
+            return
+
+        self.save_stats()
 
         # Log stats about the run
         max_reward = np.sum(self.stats['max_rewards'])
@@ -499,212 +510,85 @@ class MultiAgent(FeatureAgent):
         self._log(logging.INFO, 'Bandit perceived as best: {}'
                   .format(max(self.learner.bandits, key=self.learner.bandits.get)))
 
-    class MultiLearner():
-        """A learner that is capable of using and updating multiple models.
 
-        Currently implemented:
-        stochastic gradient descent (SGD),
-        Q-learning for n-armed bandit problem
+class SingleAgent(MultiAgent):
+    """Agent that uses only one model. All choices are not simulated."""
+    def __init__(self, environment, model, learn_from_received=False, *args, **kwargs):
+        super().__init__(environment, *args, **kwargs)
+        self.stats = {'rewards': [],
+                      'random_rewards': [],
+                      'critiques': [],
+                      'chosen_neighbours': []}
+
+        assert model in ['linear', 'sgd', 'Q'], 'No such model.'
+        self.model = model
+        self.learn_from_received = learn_from_received
+        self.step_critiques = []
+
+    def update_model(self, eval, addr, features=None):
+        if self.model == 'sgd':
+            self.learner.update_sgd(eval, addr, features)
+        elif self.model == 'linear':
+            self.learner.update_linear_regression(eval, addr, features)
+        elif self.model == 'Q':
+            self.learner.update_bandit(eval, addr)
+
+    @aiomas.expose
+    def give_artifact(self, artifact, eval, addr, random=False):
         """
-        def __init__(self, addrs, num_of_features, std,
-                     centroid_rate=0.01, weight_rate=0.2, e=0.2, reg_weight=0.5):
-            """
-            :param list addrs:
-                Addresses of the agents that are modeled.
-            :param int num_of_features:
-                Number of features in an artifact.
-            :param float std:
-                Standard deviation for evaluating artifacts.
-            :param float centroid_rate:
-                Learning rate for centroids.
-            :param float weight_rate:
-                Learning rate for weights.
-            """
-            self.centroid_rate = centroid_rate
-            self.weight_rate = weight_rate
-            self.num_of_features = num_of_features
-            self.std = std
-            self.e = e
-            self.reg_weight = reg_weight
+        Another agent uses this function to give this agent an artifact.
 
-            # Get length of the polynomial transform
-            poly_len = len(self._poly_transform(np.zeros(num_of_features)))
+        :param artifact:
+            The artifact this agent receives.
+        :param eval:
+            Evaluation of the artifact by the giving agent.
+        :param addr:
+            Address of the giving agent.
+        :return:
+            Evaluation of the artifact by the receiving agent.
+        """
+        self_eval, _ = self.evaluate(artifact)
+        features = self.get_features(artifact)
+        if self.learn_from_received:
+            if self.model == 'Q':
+                self.update_model(self_eval, addr)
+            else:
+                self.update_model(eval, addr, features)
+        self.step_critiques.append((addr, self_eval))
+        return self_eval, None
 
-            # Initialize parameters
-            self.poly_weights = {}
-            self.linear_weights = {}
-            self.sgd_weights = {}
-            self.centroids = {}
-            self.bandits = {}
-            for addr in addrs:
-                init_vals = [0.5] * num_of_features
-                self.linear_weights[addr] = np.append(init_vals, init_vals[0])
-                self.sgd_weights[addr] = np.array(init_vals)
-                self.centroids[addr] = np.array(init_vals)
-                self.bandits[addr] = 1
-                self.poly_weights[addr] = np.array([0.5] * poly_len)
+    @aiomas.expose
+    async def act(self):
+        """Create an artifact and send it to a neighbour."""
+        artifact, features, eval = self.create_artifact()
 
-            self.max = gaus_pdf(1, 1, std)
+        # Choose neighbour
+        neighbour_addr = {'sgd': self.learner.sgd_choose(features),
+                          'linear': self.learner.linear_choose(features),
+                          'Q': self.learner.bandit_choose()}[self.model]
 
-        @staticmethod
-        def _poly_transform(features):
-            length = len(features)
-            transformation = []
-            for i in range(length):
-                transformation.append(features[i] ** 2)
-                transformation.append(np.sqrt(2) * features[i])
-            for i in range(length - 1):
-                transformation.append(np.sqrt(2) * features[-1] * features[i])
-            for i in range(1, length - 2):
-                transformation.append(np.sqrt(2) * features[-2] * features[i])
-            for i in range(1, length - 1):
-                transformation.append(np.sqrt(2) * features[i] * features[0])
-            transformation.append(1)
-            return np.array(transformation)
+        # Give artifact to neighbour and get opinion
+        remote_agent = await self.env.connect(neighbour_addr)
+        opinion, _ = await remote_agent.give_artifact(artifact, eval, self.addr)
+        self.stats['rewards'].append(opinion)
+        self.stats['chosen_neighbours'].append(neighbour_addr)
 
-        def _sgd_estimate(self, addr, features):
-            """Estimate value the SGD model.
-            Returns the estimate and individual values for different features.
-            """
-            vals = np.zeros(self.num_of_features)
-            for i in range(self.num_of_features):
-                vals[i] = gaus_pdf(features[i], self.centroids[addr][i], self.std) / self.max
-            estimate = np.sum(self.sgd_weights[addr] * vals)
-            return estimate, vals
+        # Choose a random neighbour
+        random_addr = np.random.choice(list(self.connections.keys()))
+        remote_agent = await self.env.connect(random_addr)
+        random_opinion, _ = await remote_agent.evaluate(artifact)
+        self.stats['random_rewards'].append(random_opinion)
 
-        def update_bandit(self, true_value, addr, discount_factor=0,
-                          learning_factor=0.9):
-            """
-            Updates the Q-value for addr.
+        self.update_model(opinion, neighbour_addr, features)
 
-            :param true_value:
-                The evaluation of the artifact from addr.
-            :param addr:
-                The connection that will be updated.
-            :param discount_factor:
-                Controls how much the reward from future is discounted.
-            :param learning_factor:
-                Controls learning speed.
-            """
-            old_value = self.bandits[addr]
-            self.bandits[addr] += learning_factor * (true_value + discount_factor * old_value - old_value)
+    @aiomas.expose
+    async def finalize_step(self):
+        self.stats['critiques'].append(self.step_critiques)
+        self.step_critiques = []
 
-        def update_sgd(self, true_value, addr, features):
-            """
-            Uses SGD to update weights and centroid for the SGD model.
-            :param true_value:
-                The evaluation of the artifact from addr.
-            :param addr:
-                The connection that will be updated.
-            :param features:
-                Objective features of an artifact.
-            """
-            estimate, vals = self._sgd_estimate(addr, features)
-
-            error = true_value - estimate
-
-            # Update weights
-            regularizer = self.sgd_weights[addr] * 2 * self.reg_weight
-            gradient = vals * error - regularizer
-            self.sgd_weights[addr] += self.weight_rate * gradient
-            self.sgd_weights[addr] = np.clip(self.sgd_weights[addr], 0, 1)
-
-            # Calculate gradient of gaussian pdf w.r.t mean
-            gradient = (features - self.centroids[addr]) \
-                       * np.exp(-(features - self.centroids[addr]) ** 2 / (2 * self.std ** 2)) \
-                       / (np.sqrt(2 * np.pi) * (self.std ** 2) ** (3 / 2))
-
-            # Update centroid
-            self.centroids[addr] += self.centroid_rate * gradient * error
-            self.centroids[addr] = np.clip(self.centroids[addr], 0, 1)
-
-        def update_linear_regression(self, true_value, addr, features):
-            feature_vec = np.append(features, 1)
-            error = true_value - np.sum(self.linear_weights[addr] * feature_vec)
-            regularizer = self.linear_weights[addr] * 2 * self.reg_weight
-            gradient = feature_vec * error - regularizer
-            self.linear_weights[addr] += self.weight_rate * gradient
-
-        def update_poly(self, true_value, addr, features):
-            poly_feats = self._poly_transform(features)
-            error = true_value - np.sum(self.poly_weights[addr] * poly_feats)
-            gradient = poly_feats * error
-            self.poly_weights[addr] += self.weight_rate * gradient
-
-        def sgd_choose(self, features):
-            """
-            Choose a connection with the SGD model.
-
-            :param features:
-                Objective features of an artifact.
-            :return:
-                The chosen connection's address.
-            """
-            if np.random.rand() < self.e:
-                return np.random.choice(list(self.sgd_weights.keys()))
-
-            best_estimate = -1
-            best_addr = None
-
-            for addr in self.sgd_weights.keys():
-                estimate, _ = self._sgd_estimate(addr, features)
-                if estimate > best_estimate:
-                    best_estimate = estimate
-                    best_addr = addr
-
-            return best_addr
-
-        def poly_choose(self, features):
-            if np.random.rand() < self.e:
-                return np.random.choice(list(self.poly_weights.keys()))
-
-            poly_feats = self._poly_transform(features)
-            best_estimate = -np.inf
-            best_addr = None
-
-            for addr in self.poly_weights.keys():
-                estimate = np.sum(self.poly_weights[addr] * poly_feats)
-                if estimate > best_estimate:
-                    best_estimate = estimate
-                    best_addr = addr
-
-            return best_addr
-
-        def bandit_choose(self):
-            """Choose a connection with the Q-learning model.
-
-            :return:
-                The chosen connection's address.
-            """
-            if np.random.rand() < self.e:
-                return np.random.choice(list(self.bandits.keys()))
-
-            best = -np.inf
-            best_addr = None
-
-            for addr, value in self.bandits.items():
-                if value > best:
-                    best = value
-                    best_addr = addr
-
-            return best_addr
-
-        def linear_choose(self, features):
-            if np.random.random() < self.e:
-                return np.random.choice(list(self.linear_weights.keys()))
-
-            addrs = list(self.linear_weights.keys())
-            feature_vec = np.append(features, 1)
-            best_estimate = np.sum(self.linear_weights[addrs[0]] * feature_vec)
-            best_addr = addrs[0]
-
-            for addr in addrs[1:]:
-                estimate = np.sum(self.linear_weights[addr] * feature_vec)
-                if estimate > best_estimate:
-                    best_estimate = estimate
-                    best_addr = addr
-
-            return best_addr
+    @aiomas.expose
+    def close(self, folder=None):
+        self.save_stats()
 
 
 class GPImageAgent(FeatureAgent):

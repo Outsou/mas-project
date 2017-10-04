@@ -2,7 +2,7 @@
 from experiments.multi_learner_base2 import run_experiment
 
 if __name__ == "__main__":
-    params = {'common_features': [1, 3, 5]} # range from 1 to 5
+    params = {'common_features': [1, 3, 5]}
 
     num_of_simulations = 25
     num_of_steps = 1000

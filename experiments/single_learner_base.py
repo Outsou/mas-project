@@ -1,11 +1,10 @@
-'''Tests all agents modeling multiple connected agents.
-Test is run simultaneously for several different learning methods.'''
+"""Tests all agents modeling multiple connected agents. An agent only has one model."""
 
 from utils.util import create_environment
 from artifacts  import DummyArtifact
 from features import DummyFeature
-from experiments.multi_learner_base import make_loop_matrix
-from utils.stats import create_graphs, calculate_setup_averages
+from experiments.multi_learner_base import  make_loop_matrix
+from utils.stats import calculate_setup_averages, reward_graph
 
 from creamas.rules.rule import RuleLeaf
 from creamas.mappers import GaussianMapper
@@ -21,7 +20,7 @@ import shutil
 
 
 def run_experiment(params, num_of_simulations, num_of_steps,
-                   draw_windows=False, data_folder='multi_test_data2',
+                   draw_windows=False, data_folder='single_test_data',
                    report=True):
     """Run experiment.
 
@@ -37,7 +36,7 @@ def run_experiment(params, num_of_simulations, num_of_steps,
     defaults = {
         'agents': 6,
         'features': 5,
-        'common_features': 5,  # How many features the creator agent observes
+        'agent_features': 5,  # How many features the creator agent observes
         'std': 0.2,  # Standard deviation for preferences
         'search_width': 10,
         'change_speed': 0,  # How fast preferences change continuously
@@ -46,10 +45,10 @@ def run_experiment(params, num_of_simulations, num_of_steps,
         'reg_weight': 0, # How much weight is given to regularization
         'novelty_weight': 0, # How much weight is given to novelty in evaluation
         'memsize': 0,
-        'send_prob': 0 # Probability that non-active agent creates and sends an artifact
+        'send_prob': 0, # Probability that non-active agent creates and sends an artifact
+        'model': 'Q',
+        'learn_from_received': False
     }
-
-    models = ['sgd', 'bandit', 'linear']
 
     if params is None:
         params = defaults
@@ -82,6 +81,10 @@ def run_experiment(params, num_of_simulations, num_of_steps,
         os.makedirs(path)
         sim_id = 0
 
+        # Save setup parameter information
+        with open(path + '.txt', 'w') as fout:
+            pprint.pprint(params, fout, indent=4)
+
         for _ in range(num_of_simulations):
             t1 = time.monotonic()
             sim_id += 1
@@ -90,7 +93,7 @@ def run_experiment(params, num_of_simulations, num_of_steps,
             for _ in range(params['agents']):
                 rules = []
                 # Randomly select rules for this agent
-                rule_idx = np.random.choice(range(params['features']), params['common_features'], replace=False)
+                rule_idx = np.random.choice(range(params['features']), params['agent_features'], replace=False)
                 for i in rule_idx:
                     rules.append(RuleLeaf(DummyFeature(i), GaussianMapper(np.random.rand(), params['std'])))
 
@@ -98,8 +101,7 @@ def run_experiment(params, num_of_simulations, num_of_steps,
                 for _ in range(len(rules)):
                     rule_weights.append(np.random.random())
 
-                # active agent only uses common_features number of the rules
-                ret = aiomas.run(until=menv.spawn('agents:MultiAgent',
+                ret = aiomas.run(until=menv.spawn('agents:SingleAgent',
                                                   log_folder=log_folder,
                                                   data_folder=path,
                                                   artifact_cls=DummyArtifact,
@@ -112,7 +114,9 @@ def run_experiment(params, num_of_simulations, num_of_steps,
                                                   reg_weight=params['reg_weight'],
                                                   novelty_weight=params['novelty_weight'],
                                                   memsize=params['memsize'],
-                                                  own_folder=True))
+                                                  own_folder=True,
+                                                  learn_from_received=params['learn_from_received'],
+                                                  model=params['model']))
 
             # Create a fully connected graph
             G = nx.complete_graph(params['agents'])
@@ -133,6 +137,7 @@ def run_experiment(params, num_of_simulations, num_of_steps,
                 if i % params['instant_steps'] == 0:
                     menv.cause_change(params['instant_amount'])
                 sim.async_step()
+                menv.finalize_step()
 
             sim.end()
 
@@ -150,23 +155,9 @@ def run_experiment(params, num_of_simulations, num_of_steps,
                 print(("Run took {:.3f} seconds. Estimated end time at: {}\n")
                       .format(total_time, est_end_time))
 
-    run_avg_stats = calculate_setup_averages(data_folder, models)
-    i = 0
-    for avg in run_avg_stats:
-        i += 1
-        create_graphs(path,
-                      10,
-                      'setup ' + str(i),
-                      'setup_{}.png'.format(i),
-                      avg,
-                      models)
+    setup_avg_stats = calculate_setup_averages(data_folder)
+
     print('Run took {}s'.format(int(np.around(time.time() - start_time))))
 
-    # # Some purkka.
-    # if looping_params == 1:
-    #     key, values = None, None
-    #     for k, v in old_params.items():
-    #         if type(v) == list:
-    #             key, values = k, v
-    #     create_param_graph(avgs_folder, data_folder, key, values, ['sgd', 'bandit', 'linear'])
-
+    for i in range(len(setup_avg_stats)):
+        reward_graph(setup_avg_stats[i], 10, os.path.join(data_folder, 'setup' + str(i+1)))
