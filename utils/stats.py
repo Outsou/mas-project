@@ -217,10 +217,14 @@ def create_graphs(folder, window_size, title, file_name, stats, models, draw_win
         plt.close()
 
     # Create reward graph
-    graph_models = [('SGD', stats['sgd']['rewards']),
-              ('Q', stats['bandit']['rewards']),
-              ('linear', stats['linear']['rewards'])]
+    graph_models = [
+        ('Q', stats['bandit']['rewards']),
+        ('linear', stats['linear']['rewards'])
+    ]
               #('poly', stats['poly']['rewards'])]
+
+    if 'sgd' in stats:
+        graph_models.append(('SGD', stats['sgd']['rewards']))
 
     path = os.path.split(folder)[0]
 

@@ -10,7 +10,7 @@ class MultiLearner():
     Q-learning for n-armed bandit problem
     """
 
-    def __init__(self, addrs, num_of_features, std,
+    def __init__(self, addrs, num_of_features, std=None,
                  centroid_rate=0.01, weight_rate=0.2, e=0.2, reg_weight=0.5):
         """
         :param list addrs:
@@ -48,7 +48,8 @@ class MultiLearner():
             self.bandits[addr] = 1
             self.poly_weights[addr] = np.array([0.5] * poly_len)
 
-        self.max = gaus_pdf(1, 1, std)
+        if std is not None:
+            self.max = gaus_pdf(1, 1, std)
 
     @staticmethod
     def _poly_transform(features):
@@ -70,6 +71,8 @@ class MultiLearner():
         """Estimate value the SGD model.
         Returns the estimate and individual values for different features.
         """
+        assert self.std != None, 'std not set'
+
         vals = np.zeros(self.num_of_features)
         for i in range(self.num_of_features):
             vals[i] = gaus_pdf(features[i], self.centroids[addr][i], self.std) / self.max
@@ -103,6 +106,8 @@ class MultiLearner():
         :param features:
             Objective features of an artifact.
         """
+        assert self.std != None, 'std not set'
+
         estimate, vals = self._sgd_estimate(addr, features)
 
         error = true_value - estimate

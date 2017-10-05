@@ -487,4 +487,4 @@ class GeneticImageArtifact(Artifact):
         for ft in hof:
             artifact = GeneticImageArtifact(agent, ft.image, list(ft), str(ft))
             arts.append((artifact, None))
-        return arts
+        return arts, None
