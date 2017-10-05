@@ -38,7 +38,7 @@ class DummyArtifact(Artifact):
         return np.random.rand(length)
 
     @staticmethod
-    def invent(n, agent, create_kwargs):
+    def invent(n, agent, create_kwargs, n_artifacts=1):
         '''Creates n artifacts and returns the best one.'''
         def add_feature_framings(artifact):
             artifact.framings['features'] = {}
@@ -46,19 +46,15 @@ class DummyArtifact(Artifact):
                 name = 'dummy_' + str(i)
                 artifact.framings['features'][name] = artifact.obj[i]
 
-        obj = DummyArtifact.create(**create_kwargs)
-        best_artifact = DummyArtifact(agent, obj)
-        add_feature_framings(best_artifact)
-        best_eval, _ = agent.evaluate(best_artifact)
-        for _ in range(n - 1):
+        arts = []
+        for _ in range(n):
             obj = DummyArtifact.create(**create_kwargs)
             artifact = DummyArtifact(agent, obj)
             add_feature_framings(artifact)
             eval, _ = agent.evaluate(artifact)
-            if eval > best_eval:
-                best_artifact = artifact
-                best_eval = eval
-        return best_artifact, None
+            arts.append(artifact)
+        arts = sorted(arts, key=lambda art: art.evals[agent.addr], reverse=True)[:n_artifacts]
+        return [(art, None) for art in arts]
 
 
 class GeneticImageArtifact(Artifact):
@@ -487,4 +483,4 @@ class GeneticImageArtifact(Artifact):
         for ft in hof:
             artifact = GeneticImageArtifact(agent, ft.image, list(ft), str(ft))
             arts.append((artifact, None))
-        return arts, None
+        return arts

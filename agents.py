@@ -420,8 +420,9 @@ class MultiAgent(FeatureAgent):
         self.learner.update_linear_regression(eval, addr, features)
         self.learner.update_bandit(eval, addr)
 
+
     def create_artifact(self):
-        artifact, _ = self.artifact_cls.invent(self.search_width, self, self.create_kwargs)
+        artifact = self.artifact_cls.invent(self.search_width, self, self.create_kwargs)[0][0]
         if type(artifact) == list:
             artifact = artifact[0][0]
         features = self.get_features(artifact)
