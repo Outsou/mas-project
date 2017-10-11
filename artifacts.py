@@ -94,19 +94,19 @@ class GeneticImageArtifact(Artifact):
 
 
     @staticmethod
-    def save_artifact(artifact, folder, id, eval, pset, color_map,
+    def save_artifact(artifact, folder, aid, e, pset, color_map,
                       shape=(400, 400)):
-        '''
+        """
         Saves an artifact as .png.
         :param artifact:
             The artifact to be saved.
         :param folder:
             Path of the save folder.
-        :param id:
+        :param aid:
             Identification for the artifact.
-        :param eval:
-            Value of the artifact. This is written to the image.
-        '''
+        :param e:
+            Evaluation of the artifact. This is written to the image name.
+        """
         s = artifact.framings['string_repr']
         individual = gp.PrimitiveTree.from_string(s, pset)
         func = gp.compile(individual, pset)
@@ -116,13 +116,13 @@ class GeneticImageArtifact(Artifact):
         else:
             color_img = img
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        imname = 'artifact{:0>5}_{}.png'.format(id, eval)
+        bname = "art{}_{:.3f}".format(aid, e)
+        imname = '{}.png'.format(bname)
         misc.imsave(os.path.join(folder, imname), color_img)
-        imname = 'bw_artifact{:0>5}_{}.png'.format(id, eval)
+        imname = 'bw_{}.png'.format(bname)
         misc.imsave(os.path.join(folder, imname), img)
 
-
-        fname = os.path.join(folder, 'f_artifact{:0>5}_{}.txt'.format(id, eval))
+        fname = os.path.join(folder, 'f_{}.txt'.format(bname))
         with open(fname, 'w') as f:
             f.write("{}\n".format(s))
 
@@ -220,9 +220,10 @@ class GeneticImageArtifact(Artifact):
             individual.image = image
 
         # Convert deap individual to creamas artifact for evaluation
-        artifact = GeneticImageArtifact(agent, individual.image, individual, gp.compile(individual, individual.pset))
-        evaluation, _ = agent.evaluate(artifact)
-        return evaluation,
+        artifact = GeneticImageArtifact(agent, individual.image, individual,
+                                        gp.compile(individual, individual.pset))
+        evaluation, fr = agent.evaluate(artifact)
+        return evaluation, fr
 
     @staticmethod
     def png_compression_ratio(artifact):
@@ -245,7 +246,7 @@ class GeneticImageArtifact(Artifact):
     @staticmethod
     def evolve_population(population, generations, toolbox, pset, hall_of_fame,
                           cxpb=0.75, mutpb=0.25):
-        '''
+        """
         Evolves a population of individuals. Applies elitist (k=1) in addition
         to toolbox's selection strategy to the individuals.
 
@@ -257,7 +258,7 @@ class GeneticImageArtifact(Artifact):
             Deap toolbox with the necessary functions.
         :param pset:
             The primitive set used in the evolution.
-        '''
+        """
         fitnesses = map(toolbox.evaluate, population)
         for ind, fit in zip(population, fitnesses):
             ind.fitness.values = fit
@@ -328,6 +329,7 @@ class GeneticImageArtifact(Artifact):
         creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessMax,
                        pset=pset, image=None)
 
+    '''
     @staticmethod
     def work_on_artifact(agent, artifact, create_kwargs, iterations=1):
         # if artifact is None:
@@ -388,9 +390,11 @@ class GeneticImageArtifact(Artifact):
         agent.artifact = GeneticImageArtifact(agent, ind2.image, list(ind2))
 
         return GeneticImageArtifact(agent, ind1.image, list(ind1))
+    '''
 
     @staticmethod
-    def initial_population(agent, pset, pop_size, method='random'):
+    def initial_population(agent, toolbox, pset, pop_size, method='random',
+                           mutate_old=True):
         """Create initial population for a new
 
         :param agent:
@@ -403,6 +407,9 @@ class GeneticImageArtifact(Artifact):
             Either '50-50' or 'random'. If '50-50' takes (at most) half of the
             initial artifacts from the agent's memory and creates others. If
             'random' creates all individuals.
+        :param bool mutate_old:
+            If ``True``, forces mutatation on the artifacts acquired from
+            the memory.
         :return: Created population
         """
         # Return at most half old artifacts and at least half new ones.
@@ -413,8 +420,13 @@ class GeneticImageArtifact(Artifact):
                 mem_arts = np.random.choice(agent.stmem.artifacts,
                                             size=mem_size, replace=False)
                 for art in mem_arts:
-                    individual = creator.Individual(
+                    individual = creator.SuperIndividual(
                         art.framings['function_tree'])
+                    if mutate_old:
+                        toolbox.mutate(individual, pset)
+                        del individual.fitness.values
+                        if individual.image is not None:
+                            del individual.image
                     population.append(individual)
 
             if len(population) < pop_size:
@@ -456,7 +468,9 @@ class GeneticImageArtifact(Artifact):
             The given :class:`HallOfFame`-object.
         """
 
-        population = GeneticImageArtifact.initial_population(agent, pset,
+        population = GeneticImageArtifact.initial_population(agent,
+                                                             toolbox,
+                                                             pset,
                                                              pop_size,
                                                              init_method)
         toolbox.register("evaluate", GeneticImageArtifact.evaluate,

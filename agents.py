@@ -1,18 +1,18 @@
-'''This module contains different types of agents.'''
+"""This module contains different types of agents.
+"""
+import logging
+import copy
+import pickle
+import os
 
+import aiomas
+import numpy as np
 from creamas.rules.agent import RuleAgent
 from creamas.rules.rule import RuleLeaf
 from creamas.mappers import GaussianMapper
 
 from artifacts import GeneticImageArtifact as GIA
 from learners import MultiLearner
-
-import logging
-import aiomas
-import numpy as np
-import copy
-import pickle
-import os
 
 
 def record_stats(stats, key, addr, reward, chose_best):
@@ -47,15 +47,16 @@ def agent_name_parse(name):
 
 
 class FeatureAgent(RuleAgent):
-    '''The base class for agents that use features.
+    """The base class for agents that use features.
+
     Should work with any artifact class that implements distance, max_distance,
-    and invent functions.'''
+    and invent functions.
+    """
     def __init__(self, environment, artifact_cls, create_kwargs, rules,
                  rule_weights=None, novelty_weight=0.5, search_width=10,
                  critic_threshold=0.5, veto_threshold=0.5,
                  log_folder=None, log_level=logging.INFO, memsize=0):
-        '''
-
+        """
         :param environment:
             Agent's environment.
         :param artifact_cls:
@@ -78,7 +79,7 @@ class FeatureAgent(RuleAgent):
         :param log_level:
         :param memsize:
             Size of agent's memory
-        '''
+        """
         super().__init__(environment, log_folder=log_folder,
                          log_level=log_level)
         observed_features = [str(rule.feat) for rule in rules]
@@ -104,7 +105,8 @@ class FeatureAgent(RuleAgent):
 
 
     def novelty(self, artifact):
-        '''Novelty of an artifact w.r.t agent's memory.'''
+        """Novelty of an artifact w.r.t agent's memory.
+        """
         distance = self.stmem.distance(artifact)
         return distance
 
@@ -246,6 +248,7 @@ class FeatureAgent(RuleAgent):
 
 class MultiAgent(FeatureAgent):
     """An agent that learns multiple models at the same time.
+
     Used for testing and comparing different modeling methods.
     An artifact is evaluated with a weighed sum of its features' distances from
     the preferred values. The distance is calculated using a gaussian
@@ -597,9 +600,22 @@ class GPImageAgent(FeatureAgent):
     def __init__(self, *args, **kwargs):
         save_folder = kwargs.pop('save_folder', None)
         cm_name = kwargs.pop('cm_name', None)
+        # Pset with all the primitives, agent uses this to create the images.
+        self.super_pset = kwargs.pop('super_pset', None)
         self.output_shape = kwargs.pop('output_shape', (64, 64))
         super().__init__(*args, **kwargs)
+        # Pset from which the agent chooses mutations, creates new individuals,
+        # etc.
         self.pset = kwargs['create_kwargs']['pset']
+        self.shape = kwargs['create_kwargs']['shape']
+        if self.super_pset is None:
+            self.super_pset = self.pset
+
+        self.toolbox = kwargs['create_kwargs']['toolbox']
+        self.toolbox.register("evaluate", GIA.evaluate, agent=self,
+                              shape=self.shape)
+
+        self.name = "{}({})".format(self.name, self.aesthetic.upper())
 
         self.save_id = 1
         if save_folder is not None:
@@ -620,24 +636,31 @@ class GPImageAgent(FeatureAgent):
         x = np.linspace(0.0, 1.0, 256)
         return cm.get_cmap(cm_name)(x)[np.newaxis, :, :3][0]
 
-    def save_artifact(self, a):
+    def save_artifact(self, a, pset=None, aid=None):
+        pset = self.pset if pset is None else pset
         if self.artifact_save_folder is None:
             return
 
+        save_id = self.save_id if aid is None else aid
         self._log(logging.INFO, "Saving artifact {} with output shape {}"
-                  .format(self.save_id, self.output_shape))
+                  .format(save_id, self.output_shape))
         self.artifact_cls.save_artifact(a,
                                         self.artifact_save_folder,
-                                        self.save_id,
+                                        save_id,
                                         a.evals[self.name],
-                                        self.pset,
+                                        pset,
                                         self.color_map,
                                         self.output_shape)
         self.save_id += 1
 
     @aiomas.expose
-    def evaluate(self, artifact):
-        """Evaluates an artifact based on value and novelty.
+    def evaluate(self, artifact, use_png_compression=True):
+        """Evaluates an artifact based on value (and novelty).
+
+        :param bool use_png_compression:
+            If ``True`` checks artifact's compression ratio with PNG. If
+            resulting image is too small (compresses too much w.r.t. original),
+            gives evaluation 0.0 for the image.
         """
         if self.name in artifact.evals:
             return artifact.evals[self.name], artifact.framings[self.name]
@@ -648,12 +671,17 @@ class GPImageAgent(FeatureAgent):
         # Test png image compression. If image is compressed to less that 8% of
         # the original (bmp image has 1078 bytes overhead in black & white
         # images), then the image is deemed too simple and evaluation is 0.0.
-        if GIA.png_compression_ratio(artifact) >= 0.08:
-            value, _ = super().evaluate(artifact)
-            evaluation = value
-            if self.novelty_weight != -1:
-                novelty = self.novelty(artifact)
-                evaluation = (1 - self.novelty_weight) * value + self.novelty_weight * novelty
+        if use_png_compression:
+            if GIA.png_compression_ratio(artifact) < 0.08:
+                fr = {'value': value, 'novelty': novelty}
+                artifact.add_eval(self, evaluation, fr)
+                return evaluation, fr
+
+        value, _ = super().evaluate(artifact)
+        evaluation = value
+        if self.novelty_weight != -1:
+            novelty = self.novelty(artifact)
+            evaluation = (1.0 - self.novelty_weight) * value + self.novelty_weight * novelty
 
         fr = {'value': value, 'novelty': novelty}
         artifact.add_eval(self, evaluation, fr)

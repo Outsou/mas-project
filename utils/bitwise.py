@@ -1,5 +1,16 @@
-"""This module defines bitwise operations on floating point numbers by pretending that they consist of an infinite sting of bits extending to the left as well as to the right.
-More precisely the infinite string of bits b = [...,b[-2],b[-1],b[0],b[1],b[2],...] represents the number x = sum( b[i]*2**i for i in range(-inf,inf) ). Negative numbers are represented in one's complement. The identity 0.111... == 1.0 creates an ambiquity in the representation. To avoid it positive numbers are defined to be padded with zeros in both directions while negative numbers are padded with ones in both directions. This choice leads to the useful identity ~a == -a and allows +0 == ...000.000... to be the |-identity and -0 == ...111.111... to be the &-identity. Unfortunately the choice breaks compatibility with integer bitwise operations involving negative numbers."""
+"""This module defines bitwise operations on floating point numbers by
+pretending that they consist of an infinite sting of bits extending to the left
+as well as to the right. More precisely the infinite string of bits
+b = [...,b[-2],b[-1],b[0],b[1],b[2],...] represents the number
+x = sum( b[i]*2**i for i in range(-inf,inf) ). Negative numbers are represented
+in one's complement. The identity 0.111... == 1.0 creates an ambiquity in the
+representation. To avoid it positive numbers are defined to be padded with
+zeros in both directions while negative numbers are padded with ones in both
+directions. This choice leads to the useful identity ~a == -a and allows
++0 == ...000.000... to be the |-identity and -0 == ...111.111... to be
+the &-identity. Unfortunately the choice breaks compatibility with integer
+bitwise operations involving negative numbers.
+"""
 
 from math import frexp, copysign
 from sys import float_info

@@ -9,6 +9,13 @@ from types import FunctionType
 from numpy import ndarray
 
 
+def get_serializers():
+    return [get_type_ser, get_primitive_ser, get_terminal_ser,
+            get_primitive_set_typed_ser, get_func_ser, get_toolbox_ser,
+            get_rule_leaf_ser, get_genetic_image_artifact_ser, get_ndarray_ser,
+            get_dummy_ser]
+
+
 def get_func_ser():
     return FunctionType, pickle.dumps, pickle.loads
 

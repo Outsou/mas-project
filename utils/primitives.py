@@ -9,6 +9,10 @@ MINVAL = 0.00001
 HVAL = 10
 
 
+def rand_eph():
+    return np.random.random() * 2 - 1
+
+
 def _check_hval(x):
     if x > HVAL:
         return HVAL
@@ -31,6 +35,12 @@ def safe_log2(x):
     if x <= 0:
         x = MINVAL
     return math.log2(x)
+
+
+def safe_ln(x):
+    if x <= 0:
+        x = MINVAL
+    return math.log(x)
 
 
 def safe_exp(x):

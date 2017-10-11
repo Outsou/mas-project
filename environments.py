@@ -56,12 +56,12 @@ class StatEnvironment(MultiEnvironment):
         return dict
 
     def save_artifacts(self, folder, *args, **kwargs):
-        '''
+        """
         Asks each agent to save their artifacts.
 
         :param folder:
             The folder where the artifacts are saved.
-        '''
+        """
         agents = self.get_agents(addr=False)
         for agent in agents:
             name = run(agent.get_name())

@@ -20,7 +20,48 @@ import copy
 import math
 
 
+class RandEphemeralConstant(gp.Ephemeral):
+
+    def __init__(self, *args, **kwargs):
+        self.ret = RandEphemeralConstant.func()
+        super().__init__(*args, **kwargs)
+
+    @staticmethod
+    def func(self):
+        return np.random.random() * 2 - 1
+
+rand_eph = RandEphemeralConstant
+
+
 MAX_DEPTH = 8
+
+
+primitives = {
+    'min': (min, [float, float], float),
+    'max': (max, [float, float], float),
+    'safe_log2': (m.safe_log2, [float], float),
+    'safe_log10': (m.safe_log10, [float], float),
+    'sin': (np.sin, [float], float),
+    'cos': (np.cos, [float], float),
+    'safe_sinh': (m.safe_sinh, [float], float),
+    'safe_cosh': (m.safe_cosh, [float], float),
+    'tanh': (math.tanh, [float], float),
+    'atan': (math.atan, [float], float),
+    'hypot': (math.hypot, [float, float], float),
+    'abs': (np.abs, [float], float),
+    'abs_sqrt': (m.abs_sqrt, [float], float),
+    'parab': (m.parab, [float], float),
+    'avg_sum': (m.avg_sum, [float, float], float),
+    'sign': (np.sign, [float], float),
+    'mdist': (m.mdist, [float, float], float),
+    'simplex2': (m.simplex2, [float, float], float),
+    'perlin2': (m.perlin2, [float, float], float),
+    'perlin1': (m.perlin1, [float], float),
+    'plasma': (m.plasma, [float, float, float, float], float),
+    'float_or': (float_or, [float, float], float),
+    'float_xor': (float_xor, [float, float], float),
+    'float_and': (float_and, [float, float], float)
+}
 
 
 def create_environment(num_of_slaves):
@@ -102,8 +143,14 @@ def get_image_rules(img_shape):
     return rules
 
 
-def create_pset(bw=True):
-    """Creates a set of primitives for deap.
+def create_super_pset(bw=True):
+    """Create super pset which contains all the primitives
+
+    :param bw:
+        If ``True`` GP will create grey scale images, otherwise it will create
+        RGB images.
+    :return:
+        Created primitive set
     """
     if bw:
         pset = gp.PrimitiveSetTyped("main", [float, float], float)
@@ -155,10 +202,54 @@ def create_pset(bw=True):
     pset.addPrimitive(float_and, [float, float], float)
 
     # Constants
-    pset.addEphemeralConstant('pink', sample_pink, float)
+    #pset.addEphemeralConstant('pink', sample_pink, float)
     pset.addTerminal(1.6180, float)  # Golden ratio
     pset.addTerminal(np.pi, float)
-    pset.addEphemeralConstant('rand', lambda: np.random.random() * 2 - 1, float)
+    #pset.addEphemeralConstant('rand', m.rand_eph, float)
+    #pset.addEphemeralConstant('rand', rand_eph, float)
+
+    pset.renameArguments(ARG0="x")
+    pset.renameArguments(ARG1="y")
+    return pset
+
+
+def create_pset(bw=True):
+    """Creates a set of primitives for deap.
+    """
+    return create_super_pset(bw)
+
+
+def create_sample_pset(bw=True, i=0, sample_size=8):
+    """Create a sampled pset.
+    """
+    if bw:
+        pset = gp.PrimitiveSetTyped("main", [float, float], float)
+    else:
+        pset = gp.PrimitiveSetTyped("main", [float, float], list)
+        pset.addPrimitive(m.combine, [float, float, float], list)
+
+    # All psets will have basic math and constants
+
+    # Basic math
+    pset.addPrimitive(operator.mul, [float, float], float)
+    pset.addPrimitive(m.safe_div, [float, float], float)
+    pset.addPrimitive(operator.add, [float, float], float)
+    pset.addPrimitive(operator.sub, [float, float], float)
+    pset.addPrimitive(m.safe_mod, [float, float], float)
+
+    # Constants
+    #pset.addEphemeralConstant('pink', sample_pink, float)
+    pset.addTerminal(1.6180, float)  # Golden ratio
+    pset.addTerminal(np.pi, float)
+    #pset.addEphemeralConstant('rand', m.rand_eph, float)
+
+    # Other primitives are sampled from the defined primitive set.
+    keys = list(primitives.keys())
+    random.shuffle(keys)
+    sample_keys = keys[:sample_size]
+    for k in sample_keys:
+        p = primitives[k]
+        pset.addPrimitive(p[0], p[1], p[2])
 
     pset.renameArguments(ARG0="x")
     pset.renameArguments(ARG1="y")
@@ -179,6 +270,7 @@ def mutate(individual, pset, expr):
     elif rand <= 0.5:
         mutated, = gp.mutInsert(individual, pset)
     elif rand <= 0.75:
+        #print("node repl: {}".format(pset.__dict__))
         mutated, = gp.mutNodeReplacement(individual, pset)
     else:
         mutated, = gp.mutUniform(individual, expr, pset)
@@ -187,6 +279,20 @@ def mutate(individual, pset, expr):
         return mutated
     else:
         return keep_ind
+
+
+def subtree_mutate(individual, pset, expr):
+    """Choose a random node and generate a subtree to that node using ``expr``.
+    """
+    mut_ind = copy.deepcopy(individual)
+
+    while True:
+        mutated, = gp.mutUniform(mut_ind, expr, pset)
+
+        if valid_ind(mutated, MAX_DEPTH):
+            return mutated
+
+        mut_ind = copy.deepcopy(individual)
 
 
 def mate_limit(ind1, ind2):
@@ -203,8 +309,9 @@ def create_toolbox(pset):
     """
     toolbox = base.Toolbox()
     toolbox.register("expr", gp.genHalfAndHalf, pset=pset, min_=2, max_=6)
+    toolbox.register("expr_mut", gp.genHalfAndHalf, pset=pset, min_=2, max_=3)
     toolbox.register("mate", mate_limit)
-    toolbox.register("mutate", mutate, expr=toolbox.expr)
+    toolbox.register("mutate", subtree_mutate, expr=toolbox.expr_mut)
     toolbox.register("select", tools.selDoubleTournament, fitness_size=3,
                      parsimony_size=1.4, fitness_first=True)
     return toolbox
