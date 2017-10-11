@@ -254,7 +254,7 @@ class MultiAgent(FeatureAgent):
     the preferred values. The distance is calculated using a gaussian
     distribution's pdf.
     """
-    def __init__(self, environment, std, data_folder, active=False,
+    def __init__(self, environment, data_folder, std=None, active=False,
                  rule_vec=None, reg_weight=0.1, gaussian_updates=False,
                  send_prob=0, own_folder=False, *args, **kwargs):
         """
@@ -276,13 +276,14 @@ class MultiAgent(FeatureAgent):
         self.active = active
         self.age = 0
         stat_dict = {'connections': [], 'rewards': [], 'chose_best': []}
-        self.stats = {'sgd': copy.deepcopy(stat_dict),
-                      'bandit': copy.deepcopy(stat_dict),
+        self.stats = {'bandit': copy.deepcopy(stat_dict),
                       'linear': copy.deepcopy(stat_dict),
                       'poly': copy.deepcopy(stat_dict),
                       'random_rewards': [],
                       'max_rewards': [],
                       'opinions': []}
+        if std is not None:
+            self.stats['sgd'] =  copy.deepcopy(stat_dict)
         self.learner = None
         self.data_folder = data_folder
         self.reg_weight = reg_weight
@@ -334,6 +335,9 @@ class MultiAgent(FeatureAgent):
     def update_means(self):
         """Update means for rules
         """
+        if self.std is None:
+            return
+
         for i in range(len(self.R)):
             if self.gaussian_updates:
                 mean = self.R[i].mapper._mean +\
@@ -368,12 +372,13 @@ class MultiAgent(FeatureAgent):
         rnd_rewards = np.sum(list(opinions.values())) / len(opinions)
         self.stats['random_rewards'].append(rnd_rewards)
 
-        # Non-linear stochastic gradient descent selection and update
-        sgd_chosen_addr = self.learner.sgd_choose(features)
-        sgd_reward = opinions[sgd_chosen_addr]
-        self.learner.update_sgd(sgd_reward, sgd_chosen_addr, features)
-        record_stats(self.stats, 'sgd', sgd_chosen_addr,
-                     sgd_reward, sgd_reward == best_eval)
+        if self.std is not None:
+            # Non-linear stochastic gradient descent selection and update
+            sgd_chosen_addr = self.learner.sgd_choose(features)
+            sgd_reward = opinions[sgd_chosen_addr]
+            self.learner.update_sgd(sgd_reward, sgd_chosen_addr, features)
+            record_stats(self.stats, 'sgd', sgd_chosen_addr,
+                         sgd_reward, sgd_reward == best_eval)
 
         # Q-learning selection and update
         bandit_chosen_addr = self.learner.bandit_choose()
@@ -418,8 +423,11 @@ class MultiAgent(FeatureAgent):
         self.learner.update_linear_regression(eval, addr, features)
         self.learner.update_bandit(eval, addr)
 
+
     def create_artifact(self):
-        artifact, _ = self.artifact_cls.invent(self.search_width, self, self.create_kwargs)
+        artifact = self.artifact_cls.invent(self.search_width, self, self.create_kwargs)[0][0]
+        if type(artifact) == list:
+            artifact = artifact[0][0]
         features = self.get_features(artifact)
         eval, _ = self.evaluate(artifact)
         if eval >= self._own_threshold:
@@ -476,21 +484,23 @@ class MultiAgent(FeatureAgent):
         random_reward = np.sum(self.stats['random_rewards'])
         linear_reward = np.sum(self.stats['linear']['rewards'])
         linear_chose_best = np.sum(self.stats['linear']['chose_best'])
-        sgd_reward = np.sum(self.stats['sgd']['rewards'])
-        sgd_chose_best = np.sum(self.stats['sgd']['chose_best'])
         bandit_reward = np.sum(self.stats['bandit']['rewards'])
         bandit_chose_best = np.sum(self.stats['bandit']['chose_best'])
         poly_reward = np.sum(self.stats['poly']['rewards'])
         poly_chose_best = np.sum(self.stats['poly']['chose_best'])
 
+        if self.std is not None:
+            sgd_reward = np.sum(self.stats['sgd']['rewards'])
+            sgd_chose_best = np.sum(self.stats['sgd']['chose_best'])
+            self._log(logging.INFO, 'Non-linear SGD reward: {} ({}%), optimal {}/{} times'
+                      .format(int(np.around(sgd_reward)),
+                              int(np.around(sgd_reward / max_reward, 2) * 100),
+                              sgd_chose_best, self.age))
+
         self._log(logging.INFO, 'Linear regression reward: {} ({}%), optimal {}/{} times'
                   .format(int(np.around(linear_reward)),
                           int(np.around(linear_reward / max_reward, 2) * 100),
                           linear_chose_best, self.age))
-        self._log(logging.INFO, 'Non-linear SGD reward: {} ({}%), optimal {}/{} times'
-                  .format(int(np.around(sgd_reward)),
-                          int(np.around(sgd_reward / max_reward, 2) * 100),
-                          sgd_chose_best, self.age))
         self._log(logging.INFO, 'Polynomial regression reward: {} ({}%), optimal {}/{} times'
                   .format(int(np.around(poly_reward)),
                           int(np.around(poly_reward / max_reward, 2) * 100),
