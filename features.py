@@ -254,20 +254,21 @@ class ImageSymmetryFeature(Feature):
         if len(img.shape) == 3:
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
+        img = img * 1.0
         cx = int(img.shape[0] / 2)
         cy = int(img.shape[1] / 2)
         n = 0
         symms = 0.0
         liv = 1.0
         if self.horizontal:
-            symms += self._hsymm(img[:, :cx], img[:, cx:])
+            symms += self._hsymm(img[:, :cy], img[:, cx:])
             n += 1
         if self.vertical:
-            symms += self._vsymm(img[:cy, :], img[cy:, :])
+            symms += self._vsymm(img[:cx, :], img[cx:, :])
             n += 1
         if self.diagonal:
-            symms += self._dsymm(img[:cy, :cx], img[:cy, cx:],
-                                 img[cy:, :cx], img[cy:, cx:])
+            symms += self._dsymm(img[:cx, :cy], img[:cx, cy:],
+                                 img[cx:, :cy], img[cx:, cy:])
             n += 1
         if self.liveliness:
             ie = ImageEntropyFeature()

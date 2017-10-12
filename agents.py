@@ -38,12 +38,15 @@ def record_stats(stats, key, addr, reward, chose_best):
         stats[key]['chose_best'].append(0)
 
 
+
+""" Use CreativeAgent.sanitized_name()
 def agent_name_parse(name):
     '''Converts the name of an agent into a file path friendly format.'''
     parsed_name = name.replace('://', '_')
     parsed_name = parsed_name.replace(':', '_')
     parsed_name = parsed_name.replace('/', '_')
     return parsed_name
+"""
 
 
 class FeatureAgent(RuleAgent):
@@ -55,7 +58,7 @@ class FeatureAgent(RuleAgent):
     def __init__(self, environment, artifact_cls, create_kwargs, rules,
                  rule_weights=None, novelty_weight=0.5, search_width=10,
                  critic_threshold=0.5, veto_threshold=0.5,
-                 log_folder=None, log_level=logging.INFO, memsize=0):
+                 log_folder=None, log_level=logging.INFO, memsize=0, **kwargs):
         """
         :param environment:
             Agent's environment.
@@ -87,9 +90,12 @@ class FeatureAgent(RuleAgent):
                                            length=memsize,
                                            max_length=memsize,
                                            features=observed_features)
+        self.mem_size = memsize
         self.artifact_cls = artifact_cls
         self._own_threshold = critic_threshold
         self._veto_threshold = veto_threshold
+        self._novelty_threshold = kwargs.pop('novelty_threshold', self._own_threshold)
+        self._value_threshold = kwargs.pop('value_threshold', self._own_threshold)
         self.search_width = search_width
         self.create_kwargs = create_kwargs
         self.novelty_weight = novelty_weight
@@ -102,7 +108,6 @@ class FeatureAgent(RuleAgent):
 
         for i in range(len(rules)):
             self.add_rule(rules[i], rule_weights[i])
-
 
     def novelty(self, artifact):
         """Novelty of an artifact w.r.t agent's memory.
@@ -143,6 +148,7 @@ class FeatureAgent(RuleAgent):
         for i in range(iterations):
             self.stmem.train_cycle(artifact)
 
+    # TODO: why? To connect to the agent you already have addr
     @aiomas.expose
     def get_addr(self):
         return self.addr
@@ -161,8 +167,8 @@ class FeatureAgent(RuleAgent):
             return False, artifact
 
     @aiomas.expose
-    def get_name(self):
-        return self.name
+    def get_name(self, sanitized=False):
+        return self.sanitized_name() if sanitized else self.name
 
     @aiomas.expose
     async def act(self):
@@ -228,6 +234,7 @@ class FeatureAgent(RuleAgent):
 
             limit = self.get_comparison_amount()
             if limit == 0:
+                # TODO: max_distance / max_distance?
                 return np.random.random() * self.max_distance / self.max_distance
             min_distance = self.max_distance
 
@@ -283,7 +290,7 @@ class MultiAgent(FeatureAgent):
                       'max_rewards': [],
                       'opinions': []}
         if std is not None:
-            self.stats['sgd'] =  copy.deepcopy(stat_dict)
+            self.stats['sgd'] = copy.deepcopy(stat_dict)
         self.learner = None
         self.data_folder = data_folder
         self.reg_weight = reg_weight
@@ -463,7 +470,7 @@ class MultiAgent(FeatureAgent):
     def save_stats(self):
         # Save stats to a file
         if self.own_folder:
-            path = os.path.join(self.data_folder, agent_name_parse(self.name))
+            path = os.path.join(self.data_folder, self.sanitized_name())
         else:
             path = self.data_folder
         if not os.path.exists(path):
@@ -680,19 +687,29 @@ class GPImageAgent(FeatureAgent):
         # Test png image compression. If image is compressed to less that 8% of
         # the original (bmp image has 1078 bytes overhead in black & white
         # images), then the image is deemed too simple and evaluation is 0.0.
-        if use_png_compression:
-            if GIA.png_compression_ratio(artifact) < 0.08:
-                fr = {'value': value, 'novelty': novelty}
+        if use_png_compression and not artifact.png_compression_done:
+            png_ratio = GIA.png_compression_ratio(artifact)
+            artifact.png_compression_done = True
+            if png_ratio < 0.08:
+                fr = {'value': value,
+                      'novelty': novelty,
+                      'pass_novelty': False,
+                      'pass_value': False
+                      }
                 artifact.add_eval(self, evaluation, fr)
                 return evaluation, fr
 
         value, _ = super().evaluate(artifact)
         evaluation = value
         if self.novelty_weight != -1:
-            novelty = self.novelty(artifact)
+            novelty = float(self.novelty(artifact))
             evaluation = (1.0 - self.novelty_weight) * value + self.novelty_weight * novelty
 
-        fr = {'value': value, 'novelty': novelty}
+        fr = {'value': value,
+              'novelty': novelty,
+              'pass_novelty': bool(novelty >= self._novelty_threshold) if novelty is not None else False,
+              'pass_value': bool(value >= self._value_threshold)
+              }
         artifact.add_eval(self, evaluation, fr)
         return evaluation, fr
 

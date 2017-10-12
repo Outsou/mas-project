@@ -33,7 +33,7 @@ DEFAULT_PARAMS = {
     'shape': (64, 64),
     'model': 'random',  # learning model for choosing collaboration partners
     'pset_sample_size': 8,
-    'aesthetic_list': ['entropy', 'benford', 'fd_aesthetics', 'global_contrast_factor', 'symm']
+    'aesthetic_list': ['entropy', 'benford', 'fd_aesthetics', 'global_contrast_factor', 'symm_ne']
 }
 
 
@@ -135,7 +135,7 @@ def create_agents(agent_cls, menv, params, log_folder, save_folder,
         aesthetics = [ae_list[i % len(ae_list)]]
         rules = _make_rules(aesthetics, shape)
         rule_weights = [1.0]
-        create_kwargs = get_create_kwargs(pop_size, shape, sample_size, i)
+        create_kwargs = get_create_kwargs(pop_size, shape, sample_size)
         # print(create_kwargs['pset'])
         ret = aiomas.run(until=menv.spawn(agent_cls,
                                           log_folder=log_folder,
@@ -152,15 +152,17 @@ def create_agents(agent_cls, menv, params, log_folder, save_folder,
                                           output_shape=output_shape,
                                           collab_model=collab_model,
                                           super_pset=super_pset,
-                                          aesthetic=aesthetics[0]))
+                                          aesthetic=aesthetics[0],
+                                          novelty_threshold=0.01,
+                                          value_threshold=0.01))
         print("Created {} with aesthetics: {}".format(ret[1], aesthetics))
         rets.append(ret)
 
     return rets
 
 
-def get_create_kwargs(pop_size, shape, sample_size, i, *args, **kwargs):
-    pset = create_sample_pset(i=i, sample_size=sample_size)
+def get_create_kwargs(pop_size, shape, sample_size, *args, **kwargs):
+    pset = create_sample_pset(sample_size=sample_size)
     #pset = None
     create_kwargs = {'pset': pset,
                      'toolbox': create_toolbox(pset),

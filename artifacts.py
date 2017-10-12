@@ -14,32 +14,40 @@ from scipy import misc
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
+import traceback
+
 
 class DummyArtifact(Artifact):
-    '''A dummy artifact used for testing purposes. Generates feature values for an imaginary artifact.'''
+    """A dummy artifact used for testing purposes. Generates feature values for
+    an imaginary artifact.
+    """
     def __init__(self, creator, obj):
         super().__init__(creator, obj, domain='dummy')
 
     @staticmethod
     def max_distance(create_kwargs):
-        '''Max distance is the distance between a vector of zeros and ones.'''
+        """Max distance is the distance between a vector of zeros and ones.
+        """
         return np.linalg.norm(np.ones(create_kwargs['length']))
 
     @staticmethod
     def distance(artifact1, artifact2):
-        '''Euclidian distance between two vectors.'''
+        """Euclidian distance between two vectors.
+        """
         obj1 = np.array(artifact1.obj)
         obj2 = np.array(artifact2.obj)
         return np.linalg.norm(obj1 - obj2)
 
     @staticmethod
     def create(length):
-        '''Creates a random vector of features.'''
+        """Creates a random vector of features.
+        """
         return np.random.rand(length)
 
     @staticmethod
     def invent(n, agent, create_kwargs, n_artifacts=1):
-        '''Creates n artifacts and returns the best one.'''
+        """Creates n artifacts and returns the best one.
+        """
         def add_feature_framings(artifact):
             artifact.framings['features'] = {}
             for i in range(len(artifact.obj)):
@@ -62,7 +70,7 @@ class GeneticImageArtifact(Artifact):
         super().__init__(creator, obj, domain='image')
         self.framings['function_tree'] = function_tree
         self.framings['string_repr'] = string_repr
-
+        self.png_compression_done = False
 
     @staticmethod
     def artifact_from_file(fname, pset):
@@ -75,7 +83,6 @@ class GeneticImageArtifact(Artifact):
         individual = gp.PrimitiveTree.from_string(s, pset)
         return individual
 
-
     @staticmethod
     def resave_with_resolution(fname, pset, color_map, shape=(1000, 1000)):
         """Resave an individual saved as a string into a file with given
@@ -87,7 +94,6 @@ class GeneticImageArtifact(Artifact):
         color_img = color_map[img]
         new_fname = "{}_{}x{}.png".format(fname[:-4], shape[0], shape[1])
         misc.imsave(new_fname, color_img)
-
 
     @staticmethod
     def save_artifact(artifact, folder, aid, pset, color_map,
@@ -102,7 +108,13 @@ class GeneticImageArtifact(Artifact):
             Identification for the artifact.
         """
         s = artifact.framings['string_repr']
-        individual = gp.PrimitiveTree.from_string(s, pset)
+        try:
+            individual = gp.PrimitiveTree.from_string(s, pset)
+        except:
+            print(traceback.format_exc())
+            print(pset.__dict__)
+            print(s)
+            return
         func = gp.compile(individual, pset)
         img = GeneticImageArtifact.generate_image(func, shape)
         if len(img.shape) == 2:
@@ -120,33 +132,43 @@ class GeneticImageArtifact(Artifact):
         with open(fname, 'w') as f:
             f.write("{}\n".format(s))
 
-
     @staticmethod
-    def max_distance(create_kwargs):
-        '''
-        Maximum distance between two images is calculated as the euclidean distance
-        between an image filled with zeros and an image filled with 255.
-        '''
+    def max_distance(create_kwargs, shape=None, bw=True):
+        """Maximum distance between two images is calculated as the euclidean
+        distance between an image filled with zeros and an image filled with
+        255.
+        """
         class DummyArtifact():
             def __init__(self, obj):
                 self.obj = obj
 
-        shape = create_kwargs['shape']
-        art1 = DummyArtifact(np.zeros((shape[0], shape[1], 3)))
-        art2 = DummyArtifact(np.ones((shape[0], shape[1], 3)) * 255)
+        # TODO: This could be computed only once per shape!
+        if shape is None:
+            shape = create_kwargs['shape']
+        if not bw and len(shape) < 3:
+            shape = (shape[0], shape[1], 3)
+        art1 = DummyArtifact(np.zeros(shape, dtype=np.uint8))
+        art2 = DummyArtifact(np.zeros(shape, dtype=np.uint8) + 255)
         return GeneticImageArtifact.distance(art1, art2)
 
     @staticmethod
     def distance(artifact1, artifact2):
-        '''Euclidean distance between two images.'''
-        im1 = artifact1.obj / 255
-        im2 = artifact2.obj / 255
-        distances = np.zeros(3)
-        for i in range(3):
-            ch1 = im1[:, :, i]
-            ch2 = im2[:, :, i]
-            distances[i] = np.sqrt(np.sum(np.square(ch1 - ch2)))
-        return np.sqrt(np.sum(distances**2))
+        """Euclidean distance between two artifact's which objects are images.
+
+        Images are expected to be ``np.uint8``. The intensity values are
+        converted to floats in [0, 1] before computing the distance.
+        """
+        im1 = artifact1.obj / 255.0
+        im2 = artifact2.obj / 255.0
+        if len(im1.shape) == 2:
+            return np.sqrt(np.sum(np.square(im1 - im2)))
+        else:
+            distances = np.zeros(3)
+            for i in range(3):
+                ch1 = im1[:, :, i]
+                ch2 = im2[:, :, i]
+                distances[i] = np.sum(np.square(ch1 - ch2))
+            return np.sqrt(np.sum(distances))
 
     @staticmethod
     def generate_image(func, shape=(32, 32), bw=True):
@@ -168,35 +190,28 @@ class GeneticImageArtifact(Artifact):
         else:
             img = np.zeros((shape[0], shape[1], 3))
         coords = [(x, y) for x in range(width) for y in range(height)]
-        for x, y in coords:
-            # Normalize coordinates in range [-1, 1]
-            x_normalized = x / width * 2 - 1
-            y_normalized = y / height * 2 - 1
-            val = func(x_normalized, y_normalized)
-            if type(val) is not int:
-                val = np.around(val)
-            img[x, y] = val
-            #img[x, y, :] = np.around(func(x_normalized, y_normalized))
+        try:
+            for x, y in coords:
+                # Normalize coordinates in range [-1, 1]
+                x_normalized = x / width * 2 - 1
+                y_normalized = y / height * 2 - 1
+                val = func(x_normalized, y_normalized)
+                # TODO: is this going to work with RGB too if type(val) == list?
+                if type(val) is not int:
+                    val = np.around(val)
+                img[x, y] = val
+        except:
+            print(traceback.format_exc())
+            print(str(func), func)
+            return img
 
-        """
-        image = np.zeros((width, height, 3))
-
-        # Calculate color values for each x, y coordinate
-        coords = [(x, y) for x in range(width) for y in range(height)]
-        for x, y in coords:
-            # Normalize coordinates in range [-1, 1]
-            x_normalized = x / width * 2 - 1
-            y_normalized = y / height * 2 - 1
-            image[x, y, :] = np.around(func(x_normalized, y_normalized))
-        """
         # Clip values in range [0, 255]
         img = np.clip(img, 0, 255, out=img)
         return np.uint8(img)
 
     @staticmethod
     def evaluate(individual, agent, shape):
-        '''
-        Evaluates a deap individual.
+        """Evaluates a deap individual.
 
         :param individual:
             The individual to be evaluated.
@@ -206,7 +221,7 @@ class GeneticImageArtifact(Artifact):
             Shape of the image.
         :return:
             The evaluation.
-        '''
+        """
         if individual.image is None:
             # If tree is too tall return negative evaluation
             try:
@@ -218,9 +233,8 @@ class GeneticImageArtifact(Artifact):
 
         # Convert deap individual to creamas artifact for evaluation
         artifact = GeneticImageArtifact(agent, individual.image, individual,
-                                        gp.compile(individual, individual.pset))
-        evaluation, fr = agent.evaluate(artifact)
-        return evaluation, fr
+                                        str(individual))
+        return agent.evaluate(artifact)
 
     @staticmethod
     def png_compression_ratio(artifact):
@@ -299,8 +313,8 @@ class GeneticImageArtifact(Artifact):
 
     @staticmethod
     def create_population(size, pset, generation_method):
-        '''
-        Creates a population of randomly generated individuals.
+        """Creates a population of randomly generated individuals.
+
         :param size:
             The size of the generated population.
         :param pset:
@@ -310,7 +324,7 @@ class GeneticImageArtifact(Artifact):
             ``deap.gp.genHalfAndHalf``.
         :return:
             A list containing the generated population.
-        '''
+        """
         GeneticImageArtifact.init_creator(pset)
         pop_toolbox = base.Toolbox()
         pop_toolbox.register("expr", generation_method, pset=pset, min_=2, max_=6)
@@ -321,7 +335,8 @@ class GeneticImageArtifact(Artifact):
 
     @staticmethod
     def init_creator(pset):
-        '''Initializes the deap creator to use the wanted primitive set.'''
+        """Initializes the deap creator to use the wanted primitive set.
+        """
         creator.create("FitnessMax", base.Fitness, weights=(1.0,))
         creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessMax,
                        pset=pset, image=None)
@@ -392,12 +407,13 @@ class GeneticImageArtifact(Artifact):
     @staticmethod
     def initial_population(agent, toolbox, pset, pop_size, method='random',
                            mutate_old=True):
-        """Create initial population for a new
+        """Create initial population for a new artifact invention/collaboration
+        process.
 
         :param agent:
             Agent which creates the population.
         :param pset:
-            pset for the population.
+            pset for the population's new individuals
         :param pop_size:
             Size of the population.
         :param method:
@@ -412,13 +428,19 @@ class GeneticImageArtifact(Artifact):
         # Return at most half old artifacts and at least half new ones.
         if method == '50-50':
             population = []
-            if len(agent.stmem.artifacts) > 0:
-                mem_size = min(int(pop_size / 2), len(agent.stmem.artifacts))
-                mem_arts = np.random.choice(agent.stmem.artifacts,
-                                            size=mem_size, replace=False)
+            self_arts = agent.stmem.get_artifacts(creator=agent.name)
+            if len(self_arts) > 0:
+                mem_size = min(int(pop_size / 2), len(self_arts))
+                mem_arts = np.random.choice(self_arts,
+                                            size=mem_size,
+                                            replace=False)
                 for art in mem_arts:
+                    # Super individual has all primitives, so no need to call
+                    # agent specific individual creator (with agent specific
+                    # pset).
                     individual = creator.SuperIndividual(
                         art.framings['function_tree'])
+                    # Force mutate artifacts from the memory
                     if mutate_old:
                         toolbox.mutate(individual, pset)
                         del individual.fitness.values
@@ -433,7 +455,6 @@ class GeneticImageArtifact(Artifact):
         # Return random population
         return GeneticImageArtifact.create_population(pop_size, pset,
                                                       gp.genHalfAndHalf)
-
 
     @staticmethod
     def create(generations, agent, hall_of_fame, toolbox, pset, pop_size, shape,

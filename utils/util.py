@@ -41,8 +41,8 @@ primitives = {
     'max': (max, [float, float], float),
     'safe_log2': (m.safe_log2, [float], float),
     'safe_log10': (m.safe_log10, [float], float),
-    'sin': (np.sin, [float], float),
-    'cos': (np.cos, [float], float),
+    'sin': (math.sin, [float], float),
+    'cos': (math.cos, [float], float),
     'safe_sinh': (m.safe_sinh, [float], float),
     'safe_cosh': (m.safe_cosh, [float], float),
     'tanh': (math.tanh, [float], float),
@@ -140,6 +140,8 @@ def get_image_rules(img_shape):
     # All symmetries
     symm_rule = RuleLeaf(ImageSymmetryFeature(axis=7), LinearMapper(0, 1, '01'))
     rules['symm'] = symm_rule
+    symmne_rule = RuleLeaf(ImageSymmetryFeature(axis=7, use_entropy=False), LinearMapper(0, 1, '01'))
+    rules['symm_ne'] = symmne_rule
     return rules
 
 
@@ -219,7 +221,7 @@ def create_pset(bw=True):
     return create_super_pset(bw)
 
 
-def create_sample_pset(bw=True, i=0, sample_size=8):
+def create_sample_pset(bw=True, sample_size=8):
     """Create a sampled pset.
     """
     if bw:

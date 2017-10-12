@@ -1,5 +1,3 @@
-from agents import agent_name_parse
-
 from creamas.mp import MultiEnvironment
 from creamas.util import run
 
@@ -64,8 +62,8 @@ class StatEnvironment(MultiEnvironment):
         """
         agents = self.get_agents(addr=False)
         for agent in agents:
-            name = run(agent.get_name())
-            agent_folder = '{}/{}'.format(folder, agent_name_parse(name))
+            name = run(agent.get_name(True))
+            agent_folder = '{}/{}'.format(folder, name)
             if os.path.exists(agent_folder):
                 shutil.rmtree(agent_folder)
             os.makedirs(agent_folder)

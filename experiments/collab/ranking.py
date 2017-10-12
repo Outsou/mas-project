@@ -39,7 +39,7 @@ def filter(hof, epsilon=0.02):
         if passed:
             #print("Appending an image with rank {}".format(i + 1))
             filtered.append((hof[i][0], i + 1))
-    print("{} artifacts passed filtering.".format(len(filtered)))
+    #print("{} artifacts passed filtering.".format(len(filtered)))
     return filtered
 
 
@@ -77,7 +77,7 @@ def choose_best(hof1, hof2, epsilon=0.02):
     fl2 = filter(hof2, epsilon)
     matches = match(fl1, fl2, epsilon)
     a1, a2 = fl1[0][0].creator, fl2[0][0].creator
-    print("{} and {} matched {} artifacts.".format(a1, a2, len(matches)))
+    #print("{} and {} matched {} artifacts.".format(a1, a2, len(matches)))
     if len(matches) == 0 or matches is None:
         return None, None
     return random.choice((matches[0][0], matches[0][1])), matches[0][2]

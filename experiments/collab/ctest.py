@@ -21,7 +21,8 @@ if __name__ == "__main__":
     #create_kwargs = coe.get_create_kwargs(20, (64, 64))
     menv = coe.create_environment(num_of_slaves=4)
     params = coe.DEFAULT_PARAMS
-    params['agents'] = 2
+    params['agents'] = 4
+    params['novelty_weight'] = 0.2
 
     # END PARAM DEF
 
@@ -38,11 +39,12 @@ if __name__ == "__main__":
 
     sim = CollabSimulation(menv,
                            precallback=menv.match_collab_partners,
-                           callback=menv.clear_collabs,
+                           callback=menv.post_cbk,
                            log_folder=log_folder)
 
     # RUN SIMULATION
     for i in range(num_of_steps):
         sim.async_step()
 
+    menv.save_artifact_info(path)
     sim.end()
