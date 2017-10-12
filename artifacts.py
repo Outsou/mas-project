@@ -172,7 +172,10 @@ class GeneticImageArtifact(Artifact):
             # Normalize coordinates in range [-1, 1]
             x_normalized = x / width * 2 - 1
             y_normalized = y / height * 2 - 1
-            img[x, y] = np.around(func(x_normalized, y_normalized))
+            val = func(x_normalized, y_normalized)
+            if type(val) is not int:
+                val = np.around(val)
+            img[x, y] = val
             #img[x, y, :] = np.around(func(x_normalized, y_normalized))
 
         """
