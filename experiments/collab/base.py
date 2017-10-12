@@ -18,6 +18,11 @@ from agents import GPImageAgent
 from artifacts import GeneticImageArtifact as GIA
 from experiments.collab.ranking import choose_best
 
+__all__ = ['CollaborationBaseAgent',
+           'GPCollaborationAgent',
+           'CollabEnvironment',
+           'CollabSimulation']
+
 
 class CollaborationBaseAgent(GPImageAgent):
     """Base agent for collaborations, does not do anything in its :meth:`act`.
@@ -34,6 +39,8 @@ class CollaborationBaseAgent(GPImageAgent):
     @aiomas.expose
     def force_collab(self, addr, init):
         """Force agent to collaborate with an agent in given address.
+
+        Used by :meth:`CollabEnvironment.match_collab_partners`.
 
         :param addr: Agent to collaborate with
         :param bool init: Is this agent the initiator in the collaboration.
@@ -63,14 +70,21 @@ class CollaborationBaseAgent(GPImageAgent):
     async def get_collab_prefs(self):
         """Return a list of possible collaboration partners sorted in their
         preference order.
+
+        This list is used to choose collaboration partners in
+        :meth:`CollabEnvironment.match_collab_partners`.
         """
         partners = list(self.connections.keys())
-        random.shuffle(partners)
+        if self.collab_model == 'random':
+            random.shuffle(partners)
+        # TODO: ADD Q-LEARNING ETC. MODELS HERE
         return self.addr, partners
 
     @aiomas.expose
     def clear_collab(self):
         """Clear current collaboration information.
+
+        Used by :meth:`CollabEnvironment.clear_collabs`
         """
         self.in_collab = False
         self.caddr = None
@@ -208,7 +222,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                 pop = self.arts2pop(ret_arts)
                 population, iter = await self.continue_collab(pop, iter)
                 self.collab_pop = population
-        print("plookplpl", iter)
+        #print("plookplpl", iter)
 
     async def continue_collab(self, population, iter):
         """Continue collaboration by working on the population.
@@ -277,43 +291,56 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         self.collab_pop = None
 
     @aiomas.expose
-    async def act(self, *args, **kwargs):
-        self.age += 1
-        if self.cinit:
-            self.init_collab()
-            best, ranking = await self.start_collab(self.collab_iters)
+    async def collab_act(self, *args, **kwargs):
+        """Agent's act when it is time to collaborate.
 
-            if best is not None:
-                print("Chose best image with ranking {}".format(ranking))
-                e, fr = self.evaluate(best)
-                print("Evals: {}".format(best.evals))
-                n = None if fr['novelty'] is None else np.around(fr['novelty'],
-                                                                 2)
-                self._log(logging.INFO,
-                          'Created an artifact with evaluation {} (v: {}, n: {})'
-                          .format(np.around(e, 2), np.around(fr['value'], 2),
-                                  n))
-                self.add_artifact(best)
-
-                if e >= self._own_threshold:
-                    self.learn(best)
-
-                # Save artifact to save folder
-                r_agent = await self.connect(self.caddr)
-                r_aesthetic = await r_agent.get_aesthetic()
-                aid = "{:0>5}_{}-{}".format(self.age, self.aesthetic, r_aesthetic)
-                print(aid)
-                self.save_artifact(best, pset=self.super_pset, aid=aid)
+        :param args:
+        :param kwargs:
+        :return:
         """
-        artifacts = self.invent(self.search_width, n_artifacts=10)
-        for artifact, _ in artifacts:
-            e, fr = self.evaluate(artifact)
+        # Only the collaboration initiators actually act. Others react to them.
+        if not self.cinit:
+            return
+
+        self.init_collab()
+        best, ranking = await self.start_collab(self.collab_iters)
+
+        if best is not None:
+            print("Chose best image with ranking {}".format(ranking))
+            e, fr = self.evaluate(best)
+            print("Evals: {}".format(best.evals))
             n = None if fr['novelty'] is None else np.around(fr['novelty'],
                                                              2)
             self._log(logging.INFO,
-                      'Created an artifact with evaluation {} (v: {}, n: {})'
-                      .format(np.around(e, 2), np.around(fr['value'], 2),
-                              n))
+                      'Collaborated with {}. E={} (V:{}, N:{})'
+                      .format(self.caddr, np.around(e, 2),
+                              np.around(fr['value'], 2), n))
+            self.add_artifact(best)
+
+            if e >= self._own_threshold:
+                self.learn(best)
+
+            # Save artifact to save folder
+            r_agent = await self.connect(self.caddr)
+            r_aesthetic = await r_agent.get_aesthetic()
+            aid = "{:0>5}_{}-{}".format(self.age, self.aesthetic, r_aesthetic)
+            self.save_artifact(best, pset=self.super_pset, aid=aid)
+        else:
+            self._log(logging.INFO,
+                      "could not agree on a collaboration result with {}!"
+                      .format(self.caddr))
+
+    @aiomas.expose
+    async def individual_act(self, *args, **kwargs):
+        """Agent's act for individually made artifacts.
+        """
+        artifacts = self.invent(self.search_width, n_artifacts=1)
+        for artifact, _ in artifacts:
+            e, fr = self.evaluate(artifact)
+            n = None if fr['novelty'] is None else np.around(fr['novelty'], 2)
+            self._log(logging.INFO,
+                      'Created an individual artifact. E={} (V:{}, N:{})'
+                      .format(np.around(e, 2), np.around(fr['value'], 2), n))
             self.add_artifact(artifact)
 
             if e >= self._own_threshold:
@@ -321,7 +348,16 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
             # Save artifact to save folder
             self.save_artifact(artifact)
-        """
+
+    @aiomas.expose
+    async def act(self, *args, **kwargs):
+        self.age += 1
+        if self.age % 2 == 1:
+            return await self.individual_act(*args, **kwargs)
+        else:
+            return await self.collab_act(*args, **kwargs)
+
+
 
 
 class CollabSimulation(Simulation):

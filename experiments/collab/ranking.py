@@ -60,13 +60,10 @@ def match(fl1, fl2, epsilon=0.02):
             obj2 = a2.obj
             if rmse(obj1, obj2) < epsilon:
                 matched.append((a1, a2, rank1 + rank2))
-                # print("Matching {} and {} sum={}"
-                #       .format(rank1, rank2, rank1 + rank2))
                 # Always choose the best single match for an artifact
                 break
 
     matched = sorted(matched, key=operator.itemgetter(2), reverse=False)
-    print("Matched {} artifacts.".format(len(matched)))
     return matched
 
 
@@ -79,8 +76,9 @@ def choose_best(hof1, hof2, epsilon=0.02):
     fl1 = filter(hof1, epsilon)
     fl2 = filter(hof2, epsilon)
     matches = match(fl1, fl2, epsilon)
+    a1, a2 = fl1[0][0].creator, fl2[0][0].creator
+    print("{} and {} matched {} artifacts.".format(a1, a2, len(matches)))
     if len(matches) == 0 or matches is None:
-        print("No matching artifacts!")
         return None, None
     return random.choice((matches[0][0], matches[0][1])), matches[0][2]
 

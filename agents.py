@@ -647,17 +647,16 @@ class GPImageAgent(FeatureAgent):
         return cm.get_cmap(cm_name)(x)[np.newaxis, :, :3][0]
 
     def save_artifact(self, a, pset=None, aid=None):
-        pset = self.pset if pset is None else pset
         if self.artifact_save_folder is None:
             return
 
+        pset = self.pset if pset is None else pset
         save_id = self.save_id if aid is None else aid
         self._log(logging.INFO, "Saving artifact {} with output shape {}"
                   .format(save_id, self.output_shape))
         self.artifact_cls.save_artifact(a,
                                         self.artifact_save_folder,
                                         save_id,
-                                        a.evals[self.name],
                                         pset,
                                         self.color_map,
                                         self.output_shape)

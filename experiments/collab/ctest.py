@@ -14,14 +14,14 @@ from experiments.collab.base import CollabSimulation
 
 if __name__ == "__main__":
     # DEFINE TEST PARAMETERS
-    num_of_steps = 20
+    num_of_steps = 10
     pop_size = 20
     shape = (64, 64)
     sample_size = 8
     #create_kwargs = coe.get_create_kwargs(20, (64, 64))
     menv = coe.create_environment(num_of_slaves=4)
     params = coe.DEFAULT_PARAMS
-    params['agents'] = 15
+    params['agents'] = 2
 
     # END PARAM DEF
 

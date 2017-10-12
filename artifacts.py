@@ -90,7 +90,7 @@ class GeneticImageArtifact(Artifact):
 
 
     @staticmethod
-    def save_artifact(artifact, folder, aid, e, pset, color_map,
+    def save_artifact(artifact, folder, aid, pset, color_map,
                       shape=(400, 400)):
         """
         Saves an artifact as .png.
@@ -100,8 +100,6 @@ class GeneticImageArtifact(Artifact):
             Path of the save folder.
         :param aid:
             Identification for the artifact.
-        :param e:
-            Evaluation of the artifact. This is written to the image name.
         """
         s = artifact.framings['string_repr']
         individual = gp.PrimitiveTree.from_string(s, pset)
@@ -112,7 +110,7 @@ class GeneticImageArtifact(Artifact):
         else:
             color_img = img
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        bname = "art{}_{:.3f}".format(aid, e)
+        bname = "art{}".format(aid)
         imname = '{}.png'.format(bname)
         misc.imsave(os.path.join(folder, imname), color_img)
         imname = 'bw_{}.png'.format(bname)
