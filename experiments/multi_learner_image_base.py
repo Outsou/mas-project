@@ -34,7 +34,7 @@ def run_experiment(params, num_of_simulations, num_of_steps,
     create_kwargs = {'pset': pset,
                      'toolbox': create_toolbox(pset),
                      'pop_size': 20,
-                     'shape': (64, 64)}
+                     'shape': (128, 128)}
 
     # Default values
     defaults = {

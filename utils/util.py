@@ -51,7 +51,7 @@ def create_environment(num_of_slaves):
                                 slave_mgr_cls=EnvManager,
                                 slave_kwargs=slave_kwargs))
 
-    ret = run(menv.wait_slaves(30))
+    #ret = run(menv.wait_slaves(30))
     ret = run(menv.set_host_managers())
     ret = run(menv.is_ready())
 
@@ -112,53 +112,53 @@ def create_pset(bw=True):
         pset.addPrimitive(m.combine, [float, float, float], list)
 
     # Basic math
-    pset.addPrimitive(operator.mul, [float, float], float)
-    pset.addPrimitive(m.safe_div, [float, float], float)
-    pset.addPrimitive(operator.add, [float, float], float)
-    pset.addPrimitive(operator.sub, [float, float], float)
-    pset.addPrimitive(m.safe_mod, [float, float], float)
+    # pset.addPrimitive(operator.mul, [float, float], float)
+    # pset.addPrimitive(m.safe_div, [float, float], float)
+    # pset.addPrimitive(operator.add, [float, float], float)
+    # pset.addPrimitive(operator.sub, [float, float], float)
+    # pset.addPrimitive(m.safe_mod, [float, float], float)
+    #
+    # # Relational
+    # pset.addPrimitive(min, [float, float], float)
+    # pset.addPrimitive(max, [float, float], float)
 
-    # Relational
-    pset.addPrimitive(min, [float, float], float)
-    pset.addPrimitive(max, [float, float], float)
-
-    # Other math
+    # # Other math
     pset.addPrimitive(m.safe_log2, [float], float)
     pset.addPrimitive(m.safe_log10, [float], float)
-    pset.addPrimitive(np.sin, [float], float)
-    pset.addPrimitive(np.cos, [float], float)
+    # pset.addPrimitive(math.sin, [float], float)
+    # pset.addPrimitive(math.cos, [float], float)
     pset.addPrimitive(m.safe_sinh, [float], float)
-    pset.addPrimitive(m.safe_cosh, [float], float)
-    pset.addPrimitive(math.tanh, [float], float)
-    pset.addPrimitive(math.atan, [float], float)
-    pset.addPrimitive(math.hypot, [float, float], float)
-    pset.addPrimitive(np.abs, [float], float)
+    # pset.addPrimitive(m.safe_cosh, [float], float)
+    # pset.addPrimitive(math.tanh, [float], float)
+    # pset.addPrimitive(math.atan, [float], float)
+    # pset.addPrimitive(math.hypot, [float, float], float)
+    # pset.addPrimitive(np.abs, [float], float)
     pset.addPrimitive(m.abs_sqrt, [float], float)
-    pset.addPrimitive(m.parab, [float], float)
-    pset.addPrimitive(m.avg_sum, [float, float], float)
-    pset.addPrimitive(np.sign, [float], float)
+    # pset.addPrimitive(m.parab, [float], float)
+    # pset.addPrimitive(m.avg_sum, [float, float], float)
+    # pset.addPrimitive(np.sign, [float], float)
     pset.addPrimitive(m.mdist, [float, float], float)
     #pset.addPrimitive(exp, [float], float)
     #pset.addPrimitive(safe_pow, [float, float], float)
 
     # Noise
-    pset.addPrimitive(m.simplex2, [float, float], float)
-    pset.addPrimitive(m.perlin2, [float, float], float)
-    pset.addPrimitive(m.perlin1, [float], float)
+    # pset.addPrimitive(m.simplex2, [float, float], float)
+    # pset.addPrimitive(m.perlin2, [float, float], float)
+    # pset.addPrimitive(m.perlin1, [float], float)
 
     # Plasma
-    pset.addPrimitive(m.plasma, [float, float, float, float], float)
+    # pset.addPrimitive(m.plasma, [float, float, float, float], float)
 
     # Bitwise
-    pset.addPrimitive(float_or, [float, float], float)
-    pset.addPrimitive(float_xor, [float, float], float)
-    pset.addPrimitive(float_and, [float, float], float)
+    # pset.addPrimitive(float_or, [float, float], float)
+    # pset.addPrimitive(float_xor, [float, float], float)
+    # pset.addPrimitive(float_and, [float, float], float)
 
     # Constants
-    pset.addEphemeralConstant('pink', sample_pink, float)
+    #pset.addEphemeralConstant('pink', sample_pink, float)
     pset.addTerminal(1.6180, float)  # Golden ratio
     pset.addTerminal(np.pi, float)
-    pset.addEphemeralConstant('rand', lambda: np.random.random() * 2 - 1, float)
+    #pset.addEphemeralConstant('rand', lambda: np.random.random() * 2 - 1, float)
 
     pset.renameArguments(ARG0="x")
     pset.renameArguments(ARG1="y")

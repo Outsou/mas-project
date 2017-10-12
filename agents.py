@@ -456,6 +456,7 @@ class MultiAgent(FeatureAgent):
 
         opinions = await self.gather_opinions(self.connections.keys(), artifact)
         self.learn_and_record(features, opinions)
+        print(len(artifact.framings['function_tree']))
 
     def save_stats(self):
         # Save stats to a file

@@ -13,6 +13,11 @@ import numpy as np
 from scipy import misc
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from numba import vectorize
+import math
+import time
+
+from utils.primitives import make_f
 
 
 class DummyArtifact(Artifact):
@@ -62,7 +67,6 @@ class GeneticImageArtifact(Artifact):
         super().__init__(creator, obj, domain='image')
         self.framings['function_tree'] = function_tree
         self.framings['string_repr'] = string_repr
-
 
     @staticmethod
     def artifact_from_file(fname, pset):
@@ -151,6 +155,13 @@ class GeneticImageArtifact(Artifact):
         return np.sqrt(np.sum(distances**2))
 
     @staticmethod
+    def _make_f(g):
+        @vectorize(["float32(float32, float32)"], target='cuda')
+        def f(x, y):
+            return g(x, y)
+        return f
+
+    @staticmethod
     def generate_image(func, shape=(32, 32), bw=True):
         """
         Creates an image.
@@ -163,19 +174,13 @@ class GeneticImageArtifact(Artifact):
             A numpy array containing the color values.
             The format is uint8, because that is what opencv wants.
         """
-        width = shape[0]
-        height = shape[1]
-        if bw:
-            img = np.zeros(shape)
-        else:
-            img = np.zeros((shape[0], shape[1], 3))
-        coords = [(x, y) for x in range(width) for y in range(height)]
-        for x, y in coords:
-            # Normalize coordinates in range [-1, 1]
-            x_normalized = x / width * 2 - 1
-            y_normalized = y / height * 2 - 1
-            img[x, y] = np.around(func(x_normalized, y_normalized))
-            #img[x, y, :] = np.around(func(x_normalized, y_normalized))
+
+        img = np.zeros(shape)
+        threadsperblock = (32, 32)
+        blockspergrid_x = math.ceil(img.shape[0] / threadsperblock[0])
+        blockspergrid_y = math.ceil(img.shape[1] / threadsperblock[1])
+        blockspergrid = (blockspergrid_x, blockspergrid_y)
+        func[blockspergrid, threadsperblock](img)
 
         """
         image = np.zeros((width, height, 3))
@@ -206,18 +211,28 @@ class GeneticImageArtifact(Artifact):
         :return:
             The evaluation.
         '''
+
+
         if individual.image is None:
             # If tree is too tall return negative evaluation
             try:
-                func = gp.compile(individual, individual.pset)
+                start = time.time()
+                func = make_f(individual)
+                #print('Function generation took {}s'.format(time.time() - start))
             except MemoryError:
                 return -1,
+            start = time.time()
             image = GeneticImageArtifact.generate_image(func, shape)
+            #print('Image generation took {}s'.format(time.time() - start))
             individual.image = image
+
+
 
         # Convert deap individual to creamas artifact for evaluation
         artifact = GeneticImageArtifact(agent, individual.image, individual, gp.compile(individual, individual.pset))
+        start = time.time()
         evaluation, _ = agent.evaluate(artifact)
+        #print('Evaluation took {}s\n'.format(time.time() - start))
         return evaluation,
 
     @staticmethod
