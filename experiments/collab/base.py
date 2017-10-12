@@ -562,10 +562,10 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             writes += [ces, cns, cvs, cps, cages]
 
             # Running means
-            mces = ('mcevaluations.txt', [sum(ces[1][:i])/(i+1) for i in range(len(oa))])
-            mcns = ('mcnovelties.txt', [sum(cns[1][:i])/(i+1) for i in range(len(oa))])
-            mcvs = ('mcvalues.txt', [sum(cvs[1][:i])/(i+1) for i in range(len(oa))])
-            mcps = ('mcpasses.txt', [sum(cps[1][:i])/(i+1) for i in range(len(oa))])
+            mces = ('mcevaluations.txt', [sum(ces[1][:i])/(i+1) for i in range(len(ca))])
+            mcns = ('mcnovelties.txt', [sum(cns[1][:i])/(i+1) for i in range(len(ca))])
+            mcvs = ('mcvalues.txt', [sum(cvs[1][:i])/(i+1) for i in range(len(ca))])
+            mcps = ('mcpasses.txt', [sum(cps[1][:i])/(i+1) for i in range(len(ca))])
             writes += [mces, mcns, mcvs, mcps]
         else:
             writes += [None, None, None, None]
