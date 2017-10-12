@@ -554,9 +554,9 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
         # Collaborated artifacts
         if len(ca) > 0:
-            ces = ('cevaluations.txt', [a['evaluation'] for a in ca])
-            cns = ('cnovelties.txt', [a['novelty'] for a in ca])
-            cvs = ('cvalues.txt', [a['value'] for a in ca])
+            ces = ('cevaluations.txt', [a['evaluation'] for a in ca if a['evaluation'] is not None])
+            cns = ('cnovelties.txt', [a['novelty'] for a in ca if a['novelty'] is not None])
+            cvs = ('cvalues.txt', [a['value'] for a in ca if a['value'] is not None])
             cps = ('cpasses.txt', [a['self_pass'] for a in ca])
             cages = ('citers.txt', [a['i'] for a in ca])
             writes += [ces, cns, cvs, cps, cages]

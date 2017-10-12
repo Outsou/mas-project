@@ -14,7 +14,7 @@ from experiments.collab.base import CollabSimulation
 
 if __name__ == "__main__":
     # DEFINE TEST PARAMETERS
-    num_of_steps = 10
+    num_of_steps = 8
     pop_size = 20
     shape = (64, 64)
     sample_size = 8
