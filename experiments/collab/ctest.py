@@ -14,19 +14,19 @@ from experiments.collab.base import CollabSimulation
 
 if __name__ == "__main__":
     # DEFINE TEST PARAMETERS
-    num_of_steps = 6
+    num_of_steps = 20
     pop_size = 20
     shape = (64, 64)
     sample_size = 8
     #create_kwargs = coe.get_create_kwargs(20, (64, 64))
     params = coe.DEFAULT_PARAMS
-    params['agents'] = 4
+    params['agents'] = 20
     params['novelty_weight'] = 0.2
 
     # END PARAM DEF
 
     # CREATE SIMULATION AND RUN
-    path = 't33_a{}_e{}_i{}'\
+    path = 't044_1_a{}_e{}_i{}'\
         .format(params['agents'], len(params['aesthetic_list']), num_of_steps)
     log_folder = 'foo'
     coe._init_data_folder(path)
