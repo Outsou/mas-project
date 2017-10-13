@@ -466,7 +466,6 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                     del individual.image
                 injected.append(individual)
 
-        print(len(injected))
         GIA.evolve_population(population, 1, self.toolbox, self.pset,
                               self.collab_hof, injected_inds=injected)
         return population, iter + 1
