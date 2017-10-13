@@ -48,13 +48,13 @@ def safe_exp(x):
         x = -100
     elif x > 100:
         x = 100
-    return np.exp(x)
+    return math.exp(x)
 
 
 def safe_div(a, b):
     if b == 0:
         b = MINVAL
-    return np.divide(a, b)
+    return a / b
 
 
 def safe_mod(a, b):
@@ -84,7 +84,7 @@ def safe_pow(a, b):
 
 
 def abs_sqrt(a):
-    return np.sqrt(abs(a))
+    return math.sqrt(abs(a))
 
 
 def if_then_else(input, output1, output2):

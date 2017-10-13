@@ -71,6 +71,8 @@ class GeneticImageArtifact(Artifact):
         self.framings['function_tree'] = function_tree
         self.framings['string_repr'] = string_repr
         self.png_compression_done = False
+        # Artifact ID #
+        self.aid = None
 
     @staticmethod
     def artifact_from_file(fname, pset):
@@ -122,11 +124,12 @@ class GeneticImageArtifact(Artifact):
         else:
             color_img = img
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        #print(color_img.shape, np.min(color_img), np.max(color_img))
         bname = "art{}".format(aid)
         imname = '{}.png'.format(bname)
-        cv2.imwrite(os.path.join(folder, imname), color_img)
+        misc.imsave(os.path.join(folder, imname), color_img)
         imname = 'bw_{}.png'.format(bname)
-        cv2.imwrite(os.path.join(folder, imname), img)
+        misc.imsave(os.path.join(folder, imname), img)
 
         fname = os.path.join(folder, 'f_{}.txt'.format(bname))
         with open(fname, 'w') as f:
@@ -256,7 +259,7 @@ class GeneticImageArtifact(Artifact):
 
     @staticmethod
     def evolve_population(population, generations, toolbox, pset, hall_of_fame,
-                          cxpb=0.75, mutpb=0.25):
+                          cxpb=0.75, mutpb=0.25, injected_inds=[]):
         """
         Evolves a population of individuals. Applies elitist (k=1) in addition
         to toolbox's selection strategy to the individuals.
@@ -270,6 +273,8 @@ class GeneticImageArtifact(Artifact):
         :param pset:
             The primitive set used in the evolution.
         """
+        pop_len = len(population)
+        population += injected_inds
         fitnesses = map(toolbox.evaluate, population)
         for ind, fit in zip(population, fitnesses):
             ind.fitness.values = fit
@@ -279,7 +284,7 @@ class GeneticImageArtifact(Artifact):
             # Select the next generation individuals with elitist (k=1) and
             # toolboxes selection method
             offspring = tools.selBest(population, 1)
-            offspring += toolbox.select(population, len(population) - 1)
+            offspring += toolbox.select(population, pop_len - 1)
             # Clone the selected individuals
             offspring = list(map(toolbox.clone, offspring))
 
@@ -421,7 +426,7 @@ class GeneticImageArtifact(Artifact):
             initial artifacts from the agent's memory and creates others. If
             'random' creates all individuals.
         :param bool mutate_old:
-            If ``True``, forces mutatation on the artifacts acquired from
+            If ``True``, forces mutation on the artifacts acquired from
             the memory.
         :return: Created population
         """

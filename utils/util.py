@@ -255,7 +255,7 @@ def create_sample_pset(bw=True, sample_size=8):
 
     pset.renameArguments(ARG0="x")
     pset.renameArguments(ARG1="y")
-    return pset
+    return pset, sample_keys
 
 
 def valid_ind(ind, max_val):
@@ -272,7 +272,6 @@ def mutate(individual, pset, expr):
     elif rand <= 0.5:
         mutated, = gp.mutInsert(individual, pset)
     elif rand <= 0.75:
-        #print("node repl: {}".format(pset.__dict__))
         mutated, = gp.mutNodeReplacement(individual, pset)
     else:
         mutated, = gp.mutUniform(individual, expr, pset)
@@ -311,7 +310,7 @@ def create_toolbox(pset):
     """
     toolbox = base.Toolbox()
     toolbox.register("expr", gp.genHalfAndHalf, pset=pset, min_=2, max_=6)
-    toolbox.register("expr_mut", gp.genHalfAndHalf, pset=pset, min_=2, max_=3)
+    toolbox.register("expr_mut", gp.genHalfAndHalf, pset=pset, min_=1, max_=3)
     toolbox.register("mate", mate_limit)
     toolbox.register("mutate", subtree_mutate, expr=toolbox.expr_mut)
     toolbox.register("select", tools.selDoubleTournament, fitness_size=3,
