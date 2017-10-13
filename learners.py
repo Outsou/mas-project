@@ -1,5 +1,6 @@
 import numpy as np
 from creamas.math import gaus_pdf
+from operator import itemgetter
 
 
 class MultiLearner():
@@ -179,14 +180,22 @@ class MultiLearner():
 
         return best_addr
 
-    def bandit_choose(self):
+    def bandit_choose(self, get_list=False):
         """Choose a connection with the Q-learning model.
 
         :return:
             The chosen connection's address.
         """
         if np.random.rand() < self.e:
+            if get_list:
+                keys = list(self.bandits.keys())
+                np.random.shuffle(keys)
+                return keys
             return np.random.choice(list(self.bandits.keys()))
+
+        if get_list:
+            keys, vals = zip(*sorted(self.bandits.items(), key=itemgetter(1)))
+            return keys
 
         best = -np.inf
         best_addr = None
