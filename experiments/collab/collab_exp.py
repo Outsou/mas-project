@@ -5,6 +5,7 @@ import os
 import shutil
 import time
 import pprint
+import logging
 
 import aiomas
 import networkx as nx
@@ -31,6 +32,7 @@ DEFAULT_PARAMS = {
     'mem_size': 100,
     'search_width': 10,
     'shape': (64, 64),
+    'output_shape': (200, 200),
     'model': 'random',  # learning model for choosing collaboration partners
     'pset_sample_size': 8,
     'aesthetic_list': ['entropy', 'benford', 'fd_aesthetics', 'global_contrast_factor', 'symm_ne']
@@ -87,8 +89,9 @@ def _get_default_params(params):
     return params
 
 
-def create_environment(num_of_slaves):
-    '''Creates a StatEnvironment with slaves.'''
+def create_environment(num_of_slaves, save_folder=None):
+    """Creates a StatEnvironment with slaves.
+    """
     addr = ('localhost', 5550)
 
     addrs = []
@@ -96,14 +99,21 @@ def create_environment(num_of_slaves):
         addrs.append(('localhost', 5560 + i))
 
     env_kwargs = {'extra_serializers': get_serializers(),
-                  'codec': aiomas.MsgPack}
+                  'codec': aiomas.MsgPack,
+                  'save_folder': save_folder}
     slave_kwargs = [{'extra_serializers': get_serializers(),
                      'codec': aiomas.MsgPack} for _ in range(len(addrs))]
+
+    logger = logging.getLogger("CollaborationEnvironmentLogger")
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
 
     menv = CollabEnvironment(addr,
                              env_cls=Environment,
                              mgr_cls=MultiEnvManager,
-                             logger=None,
+                             logger=logger,
                              **env_kwargs)
 
     ret = run(menv.spawn_slaves(slave_addrs=addrs,
@@ -131,11 +141,11 @@ def create_agents(agent_cls, menv, params, log_folder, save_folder,
         search_width = params['search_width']
         shape = params['shape']
         collab_model = params['model']
-        output_shape = (400, 400)
+        output_shape = params['output_shape']
         aesthetics = [ae_list[i % len(ae_list)]]
         rules = _make_rules(aesthetics, shape)
         rule_weights = [1.0]
-        create_kwargs = get_create_kwargs(pop_size, shape, sample_size)
+        create_kwargs, funnames = get_create_kwargs(pop_size, shape, sample_size)
         # print(create_kwargs['pset'])
         ret = aiomas.run(until=menv.spawn(agent_cls,
                                           log_folder=log_folder,
@@ -154,21 +164,22 @@ def create_agents(agent_cls, menv, params, log_folder, save_folder,
                                           super_pset=super_pset,
                                           aesthetic=aesthetics[0],
                                           novelty_threshold=0.01,
-                                          value_threshold=0.01))
-        print("Created {} with aesthetics: {}".format(ret[1], aesthetics))
+                                          value_threshold=0.01,
+                                          pset_names=funnames))
+        # print("Created {} with aesthetics: {}".format(ret[1], aesthetics))
         rets.append(ret)
 
     return rets
 
 
 def get_create_kwargs(pop_size, shape, sample_size, *args, **kwargs):
-    pset = create_sample_pset(sample_size=sample_size)
+    pset, funnames = create_sample_pset(sample_size=sample_size)
     #pset = None
     create_kwargs = {'pset': pset,
                      'toolbox': create_toolbox(pset),
                      'pop_size': pop_size,
                      'shape': shape}
-    return create_kwargs
+    return create_kwargs, funnames
 
 
 def create_agent_connections(menv, n_agents):
@@ -209,6 +220,7 @@ def run_experiment(agent_cls, params, num_of_simulations, num_of_steps,
     old_params = params.copy()
     log_folder = None
     avgs_folder = _init_data_folder(data_folder)
+    output_shape = params['output_shape']
 
     run_id = 0
     times = []  # Run times for reporting during the run.
@@ -229,7 +241,7 @@ def run_experiment(agent_cls, params, num_of_simulations, num_of_steps,
 
             # Create agents to the environment
             super_pset = create_super_pset(bw=True)
-            create_agents(agent_cls, menv, params, log_folder, path, pop_size, shape, sample_size, super_pset)
+            create_agents(agent_cls, menv, params, log_folder, path, pop_size, shape, output_shape, sample_size, super_pset)
 
             # Make fully connected graph for agent connections.
             create_agent_connections(menv, params['agents'])
