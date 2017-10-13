@@ -124,9 +124,9 @@ class GeneticImageArtifact(Artifact):
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         bname = "art{}".format(aid)
         imname = '{}.png'.format(bname)
-        misc.imsave(os.path.join(folder, imname), color_img)
+        cv2.imwrite(os.path.join(folder, imname), color_img)
         imname = 'bw_{}.png'.format(bname)
-        misc.imsave(os.path.join(folder, imname), img)
+        cv2.imwrite(os.path.join(folder, imname), img)
 
         fname = os.path.join(folder, 'f_{}.txt'.format(bname))
         with open(fname, 'w') as f:

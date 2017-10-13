@@ -81,3 +81,4 @@ mgr_addrs.txt
 *.xml
 testing/
 tests/
+screenlog.*
