@@ -29,7 +29,7 @@ DEFAULT_PARAMS = {
     'critic_threshold': 0.0,
     'veto_threshold': 0.0,
     'novelty_weight': -1,
-    'mem_size': 100,
+    'mem_size': 500,
     'search_width': 10,
     'shape': (64, 64),
     'output_shape': (200, 200),

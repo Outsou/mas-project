@@ -259,7 +259,7 @@ class GeneticImageArtifact(Artifact):
 
     @staticmethod
     def evolve_population(population, generations, toolbox, pset, hall_of_fame,
-                          cxpb=0.75, mutpb=0.25):
+                          cxpb=0.75, mutpb=0.25, injected_inds=[]):
         """
         Evolves a population of individuals. Applies elitist (k=1) in addition
         to toolbox's selection strategy to the individuals.
@@ -273,6 +273,8 @@ class GeneticImageArtifact(Artifact):
         :param pset:
             The primitive set used in the evolution.
         """
+        pop_len = len(population)
+        population += injected_inds
         fitnesses = map(toolbox.evaluate, population)
         for ind, fit in zip(population, fitnesses):
             ind.fitness.values = fit
@@ -282,7 +284,7 @@ class GeneticImageArtifact(Artifact):
             # Select the next generation individuals with elitist (k=1) and
             # toolboxes selection method
             offspring = tools.selBest(population, 1)
-            offspring += toolbox.select(population, len(population) - 1)
+            offspring += toolbox.select(population, pop_len - 1)
             # Clone the selected individuals
             offspring = list(map(toolbox.clone, offspring))
 

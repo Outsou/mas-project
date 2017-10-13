@@ -60,8 +60,8 @@ class ImageSTMemory:
         if len(self.artifacts) >= 2 * self.max_length:
             self.artifacts = self.artifacts[-self.max_length:]
         self.artifacts.append(artifact)
-        # print("artifacts in memory: {} ({})".format(len(self.get_artifacts()),
-        #                                             len(self.artifacts)))
+        #print("artifacts in memory: {} ({})".format(
+        #    len(self.get_artifacts()), len(self.artifacts)))
 
     def get_artifacts(self, creator=None):
         """Get artifacts in the memory.
@@ -443,6 +443,34 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         best, ranking = choose_best(hof_arts, arts1, epsilon=0.02)
         return best, ranking
 
+    async def collab_first_iter(self, population, iter):
+        """First time an agent receives the collaboration population, it can
+        inject some artifacts from its memory to it.
+
+        This might allow for a more meaningful crossover in collaboration.
+        """
+        pop_size = len(population)
+        self_arts = self.stmem.get_artifacts(creator=self.name)
+        injected = []
+        if len(self_arts) > 0:
+            mem_size = min(int(pop_size / 4), len(self_arts))
+            mem_arts = np.random.choice(self_arts,
+                                        size=mem_size,
+                                        replace=False)
+            for art in mem_arts:
+                individual = creator.SuperIndividual(
+                    art.framings['function_tree'])
+                self.toolbox.mutate(individual, self.pset)
+                del individual.fitness.values
+                if individual.image is not None:
+                    del individual.image
+                injected.append(individual)
+
+        print(len(injected))
+        GIA.evolve_population(population, 1, self.toolbox, self.pset,
+                              self.collab_hof, injected_inds=injected)
+        return population, iter + 1
+
     @aiomas.expose
     async def rcv_collab(self, arts, iter):
         """Receive collaboration from other agent and continue working on it
@@ -455,6 +483,10 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             pop, hof_arts = self.finish_collab(population)
             ret_arts = self.pop2arts(pop)
             return ret_arts, hof_arts, iter + 1
+        elif iter == 1:
+            pop, iter = await self.collab_first_iter(population, iter)
+            ret_arts = self.pop2arts(pop)
+            return ret_arts, iter
         else:
             pop, iter = await self.continue_collab(population, iter)
             ret_arts = self.pop2arts(pop)
@@ -600,6 +632,10 @@ class GPCollaborationAgent(CollaborationBaseAgent):
     def show_artifact(self, artifact):
         """USE LEARNING MODEL HERE.
         """
+        # Do not learn artifact again if it has been shown already.
+        if self.name in artifact.framings:
+            return artifact.evals[self.name], artifact.framings[self.name]
+
         e, fr = self.evaluate(artifact)
         self.learn(artifact)
         return e, fr
@@ -744,7 +780,7 @@ class CollabEnvironment(StatEnvironment):
                 matches.append((agent, addr))
 
         self.pref_lists['pairings'].append(matches)
-        pprint.pprint(self.pref_lists)
+        #pprint.pprint(self.pref_lists)
         if collab_step:
             for a1, a2 in matches:
                 run(slave_task2(a1, a2, cinit=True))
