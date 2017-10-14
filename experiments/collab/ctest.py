@@ -10,11 +10,12 @@ from creamas import Simulation
 from agents import GPImageAgent
 from experiments.collab import collab_exp as coe
 from experiments.collab.base import CollabSimulation
+import time
 
 
 if __name__ == "__main__":
     # DEFINE TEST PARAMETERS
-    num_of_steps = 200
+    num_of_steps = 400
     pop_size = 20
     shape = (64, 64)
     sample_size = 8
@@ -23,6 +24,7 @@ if __name__ == "__main__":
     params = coe.DEFAULT_PARAMS
     params['agents'] = 10
     params['novelty_weight'] = 0.2
+    # params['model'] = 'Q'
 
     # END PARAM DEF
 
@@ -43,8 +45,16 @@ if __name__ == "__main__":
                            log_folder=log_folder)
 
     # RUN SIMULATION
+    step_times = []
     for i in range(num_of_steps):
+        step_start = time.monotonic()
         sim.async_step()
+        step_time = time.monotonic() - step_start
+        step_times.append(step_time)
+        mean_step_time = np.mean(step_times)
+        run_end_time = time.ctime(time.time() + (mean_step_time * (num_of_steps - (i + 1))))
+        print('Step {}/{} finished in {:.3f} seconds. Estimated run end time at: {}'
+              .format((i + 1), num_of_steps, step_time, run_end_time))
 
     menv.save_artifact_info(path)
     sim.end()
