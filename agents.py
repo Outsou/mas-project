@@ -39,14 +39,13 @@ def record_stats(stats, key, addr, reward, chose_best):
 
 
 
-""" Use CreativeAgent.sanitized_name()
+
 def agent_name_parse(name):
     '''Converts the name of an agent into a file path friendly format.'''
     parsed_name = name.replace('://', '_')
     parsed_name = parsed_name.replace(':', '_')
     parsed_name = parsed_name.replace('/', '_')
     return parsed_name
-"""
 
 
 class FeatureAgent(RuleAgent):
@@ -632,8 +631,7 @@ class GPImageAgent(FeatureAgent):
         self.toolbox.register("evaluate", GIA.evaluate, agent=self,
                               shape=self.shape)
 
-        self.name = "{}({})".format(self.name, self.aesthetic.upper())
-
+        self.max_value = -1
         self.save_id = 1
         if save_folder is not None:
             self.artifact_save_folder = os.path.join(save_folder,
@@ -694,7 +692,10 @@ class GPImageAgent(FeatureAgent):
                 fr = {'value': value,
                       'novelty': novelty,
                       'pass_novelty': False,
-                      'pass_value': False
+                      'pass_value': False,
+                      'max_value': self.max_value,
+                      'norm_value': 0.0,
+                      'aesthetic': self.aesthetic
                       }
                 artifact.add_eval(self, evaluation, fr)
                 return evaluation, fr
@@ -705,10 +706,16 @@ class GPImageAgent(FeatureAgent):
             novelty = float(self.novelty(artifact))
             evaluation = (1.0 - self.novelty_weight) * value + self.novelty_weight * novelty
 
+        if self.max_value < value:
+            self.max_value = value
+
         fr = {'value': value,
               'novelty': novelty,
               'pass_novelty': bool(novelty >= self._novelty_threshold) if novelty is not None else False,
-              'pass_value': bool(value >= self._value_threshold)
+              'pass_value': bool(value >= self._value_threshold),
+              'max_value': self.max_value,
+              'norm_value': value / self.max_value,
+              'aesthetic': self.aesthetic
               }
         artifact.add_eval(self, evaluation, fr)
         return evaluation, fr

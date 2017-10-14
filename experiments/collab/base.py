@@ -6,6 +6,9 @@ import time
 import random
 import operator
 import os
+import pickle
+import asyncio
+import pprint
 
 import numpy as np
 from deap import tools, gp, creator, base
@@ -15,7 +18,7 @@ from creamas.util import create_tasks, run
 
 from environments import StatEnvironment
 
-from agents import GPImageAgent
+from agents import GPImageAgent, agent_name_parse
 from artifacts import GeneticImageArtifact as GIA
 from experiments.collab.ranking import choose_best
 from learners import MultiLearner
@@ -24,6 +27,18 @@ __all__ = ['CollaborationBaseAgent',
            'GPCollaborationAgent',
            'CollabEnvironment',
            'CollabSimulation']
+
+
+def get_aid(addr, age, aest, val, nov, caddr=None, caest=None):
+    aid = ""
+    if caddr is None:
+        aid = "{:0>5}{}_{}_v{}_n{}".format(
+            age, agent_name_parse(addr), aest, val, nov)
+    else:
+        aid = "{:0>5}{}_{}_v{}_n{}-{}_{}".format(
+            age, agent_name_parse(addr), aest, val, nov,
+            agent_name_parse(caddr), caest)
+    return aid
 
 
 class ImageSTMemory:
@@ -46,8 +61,8 @@ class ImageSTMemory:
         if len(self.artifacts) >= 2 * self.max_length:
             self.artifacts = self.artifacts[-self.max_length:]
         self.artifacts.append(artifact)
-        print("artifacts in memory: {} ({})".format(len(self.get_artifacts()),
-                                                    len(self.artifacts)))
+        #print("artifacts in memory: {} ({})".format(
+        #    len(self.get_artifacts()), len(self.artifacts)))
 
     def get_artifacts(self, creator=None):
         """Get artifacts in the memory.
@@ -212,6 +227,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
     """Collaboration agent for GP images.
     """
     def __init__(self, *args, **kwargs):
+        self.pset_names = kwargs.pop('pset_names', [])
         self.aesthetic = kwargs.pop('aesthetic', '')
         super().__init__(*args, **kwargs)
         self.pop_size = self.create_kwargs['pop_size']
@@ -219,6 +235,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         self.collab_hof = tools.HallOfFame(self.collab_hof_size)
         self.collab_pop = None
         self.age = 0
+        self.last_artifact = None
 
         creator.create("FitnessMax", base.Fitness, weights=(1.0,))
         creator.create("SuperIndividual",
@@ -236,14 +253,97 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
         # Data structures to keep information about the created artifacts.
         # Mainly evaluations, e.g. value and novelty for own artifacts,
-        # but also for collaborated artifacts the partner's evaluations and
-        # their aesthetic functions.
-        self.own_arts = []
-        self.collab_arts = []
+        # but also for collaborated artifacts the partner's aesthetic function.
+        self.own_arts = {'val': [],             # Own value (non-norm.)
+                         'nov': [],             # Own novelty
+                         'eval': [],            # Own overall evaluation
+                         'aid': [],             # Image ID
+                         'mval': [],            # Current max own value
+                         'nval': [],            # Normalized own value
+                         'age': []}             # Own age
+
+        # Evaluations of own artifacts by all the agents: key is aid
+        # values are dicts
+        self.own_evals = {}
+
+        self.collab_arts = {'caddr': [],        # Collaborator's addr
+                            'cinit': [],        # Initiator?
+                            'fb': [],           # Found artifact?
+                            'caest': [],        # Collab. aesthetic
+                            'aid': [],          # Image ID
+                            'val': [],          # Own value
+                            'mval': [],         # Current max val
+                            'nval': [],         # Normalized own value
+                            'nov': [],          # Own novelty
+                            'eval': [],         # Own overall evaluation
+                            'cval': [],         # Collab's value (non-norm.)
+                            'cnov': [],         # Collab's novelty
+                            'ceval': [],        # Collab's overall evaluation
+                            'cmval': [],        # Collab's current max val
+                            'cnval': [],        # Collab's normalized val
+                            'age': []}          # Own age
+
+        # Evaluations of collaborated artifacts by all the agents: key is aid
+        # values are dicts
+        self.collab_evals = {}
+        self.save_general_info()
 
     @aiomas.expose
     def get_aesthetic(self):
         return self.aesthetic
+
+    def save_general_info(self):
+        sfold = self.artifact_save_folder
+        info = {'aesthetic': self.aesthetic,
+                'pset_names': self.pset_names,
+                'collab_hof_size': self.collab_hof_size,
+                'addr': self.addr,
+                'collab_model': self.collab_model,
+                'collab_iters': self.collab_iters}
+
+        with open(os.path.join(sfold, 'general_info.pkl'), 'wb') as f:
+            pickle.dump(info, f)
+
+    def append_oa(self, artifact):
+        fr = artifact.framings[self.name]
+        self.own_arts['val'].append(fr['value'])
+        self.own_arts['nov'].append(fr['novelty'])
+        self.own_arts['eval'].append(artifact.evals[self.name])
+        self.own_arts['aid'].append(artifact.aid)
+        self.own_arts['mval'].append(fr['max_value'])
+        self.own_arts['nval'].append(fr['norm_value'])
+        self.own_arts['age'].append(self.age)
+
+    def add_own_evals(self, aid, evals):
+        self.own_evals[aid] = {}
+        for addr, e in evals:
+            self.own_evals[aid][addr] = e
+
+    def append_coa(self, fb, caest, artifact=None):
+        self.collab_arts['caddr'].append(self.caddr)
+        self.collab_arts['cinit'].append(self.cinit)
+        self.collab_arts['caest'].append(caest)
+        self.collab_arts['age'].append(self.age)
+        self.collab_arts['fb'].append(fb)
+        if fb:
+            fr = artifact.framings[self.name]
+            cfr = artifact.framings[self.caddr]
+            self.collab_arts['aid'].append(artifact.aid)
+            self.collab_arts['val'].append(fr['value'])
+            self.collab_arts['nov'].append(fr['novelty'])
+            self.collab_arts['eval'].append(artifact.evals[self.name])
+            self.collab_arts['mval'].append(fr['max_value'])
+            self.collab_arts['nval'].append(fr['norm_value'])
+            self.collab_arts['cval'].append(cfr['value'])
+            self.collab_arts['cnov'].append(cfr['novelty'])
+            self.collab_arts['ceval'].append(artifact.evals[self.caddr])
+            self.collab_arts['cmval'].append(cfr['max_value'])
+            self.collab_arts['cnval'].append(cfr['norm_value'])
+
+    def add_collab_evals(self, aid, evals):
+        self.collab_evals[aid] = {}
+        for addr, e in evals:
+            self.own_evals[aid][addr] = e
 
     def hof2arts(self, hof):
         arts = []
@@ -357,6 +457,33 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         best, ranking = choose_best(hof_arts, arts1, epsilon=0.02)
         return best, ranking
 
+    async def collab_first_iter(self, population, iter):
+        """First time an agent receives the collaboration population, it can
+        inject some artifacts from its memory to it.
+
+        This might allow for a more meaningful crossover in collaboration.
+        """
+        pop_size = len(population)
+        self_arts = self.stmem.get_artifacts(creator=self.name)
+        injected = []
+        if len(self_arts) > 0:
+            mem_size = min(int(pop_size / 4), len(self_arts))
+            mem_arts = np.random.choice(self_arts,
+                                        size=mem_size,
+                                        replace=False)
+            for art in mem_arts:
+                individual = creator.SuperIndividual(
+                    art.framings['function_tree'])
+                self.toolbox.mutate(individual, self.pset)
+                del individual.fitness.values
+                if individual.image is not None:
+                    del individual.image
+                injected.append(individual)
+
+        GIA.evolve_population(population, 1, self.toolbox, self.pset,
+                              self.collab_hof, injected_inds=injected)
+        return population, iter + 1
+
     @aiomas.expose
     async def rcv_collab(self, arts, iter):
         """Receive collaboration from other agent and continue working on it
@@ -369,13 +496,17 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             pop, hof_arts = self.finish_collab(population)
             ret_arts = self.pop2arts(pop)
             return ret_arts, hof_arts, iter + 1
+        elif iter == 1:
+            pop, iter = await self.collab_first_iter(population, iter)
+            ret_arts = self.pop2arts(pop)
+            return ret_arts, iter
         else:
             pop, iter = await self.continue_collab(population, iter)
             ret_arts = self.pop2arts(pop)
             return ret_arts, iter
 
     @aiomas.expose
-    def rcv_collab_artifact(self, artifact, addr, aesthetic, collab_passed):
+    def rcv_collab_artifact(self, artifact, aesthetic):
         """Receive the final artifact made in collaboration with agent in
         ``addr``.
 
@@ -383,17 +514,8 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         and as agents are altruistic, this agent accepts it as it is.
         """
         if artifact is None:
-            self.collab_arts.append({'addr': self.caddr,
-                                     'init': self.cinit,
-                                     'found_best': False,
-                                     'other_aest': aesthetic,
-                                     'self_pass': False,
-                                     'other_pass': False,
-                                     'value': None,
-                                     'novelty': None,
-                                     'evaluation': None,
-                                     'i': self.age})
-            return False
+            self.append_coa(False, aesthetic, None)
+            return None
 
         self._log(logging.DEBUG, "Received collab artifact.")
         if self.name not in artifact.evals:
@@ -401,33 +523,23 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
         fr = artifact.framings[self.name]
         passed = bool(fr['pass_value'] and fr['pass_novelty'])
-        if passed and collab_passed:
-            self._log(logging.DEBUG, "Collab artifact passed both thresholds.")
+        if passed:
+            # self._log(logging.DEBUG, "Collab artifact passed both thresholds.")
             self.learn(artifact)
 
-        self.collab_arts.append({'addr': self.caddr,
-                                 'init': self.cinit,
-                                 'found_best': True,
-                                 'other_aest': aesthetic,
-                                 'self_pass': passed,
-                                 'other_pass': collab_passed,
-                                 'value': fr['value'],
-                                 'novelty': fr['novelty'],
-                                 'evaluation': artifact.evals[self.name],
-                                 'i': self.age})
-
-        return passed
+        self.append_coa(True, aesthetic, artifact)
+        return artifact
 
     @aiomas.expose
     def clear_collab(self):
-        print("{} clearing collab".format(self.addr))
+        # print("{} clearing collab".format(self.addr))
         super().clear_collab()
         self.collab_hof.clear()
         self.collab_pop = None
 
     @aiomas.expose
     def get_arts_information(self):
-        return self.own_arts, self.collab_arts
+        return self.aesthetic, self.own_arts, self.collab_arts
 
     @aiomas.expose
     async def act_collab(self, *args, **kwargs):
@@ -449,6 +561,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             # creating new individual populations
             best._creator = "{} - {}".format(self.addr, self.caddr)
 
+
             #print("Chose best image with ranking {}".format(ranking))
             e, fr = self.evaluate(best)
 
@@ -457,52 +570,38 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
             #print("Evals: {}".format(best.evals))
             #print("Framings: {}".format(best.framings))
-            n = None if fr['novelty'] is None else np.around(fr['novelty'],
-                                                             2)
-            self._log(logging.INFO,
-                      'Collaborated with {}. E={} (V:{}, N:{})'
-                      .format(self.caddr, np.around(e, 2),
-                              np.around(fr['value'], 2), n))
-            self.add_artifact(best)
-
-            passed = bool(fr['pass_value'] and fr['pass_novelty'])
+            n = None if fr['novelty'] is None else np.around(fr['novelty'], 2)
+            v = np.around(fr['value'], 2)
+            e = np.around(e, 2)
+            mv = np.around(fr['max_value'], 2)
 
             r_agent = await self.connect(self.caddr)
-            r_aesthetic = await r_agent.get_aesthetic()
-            ret = await r_agent.rcv_collab_artifact(best, self.addr, self.aesthetic, passed)
+            caest = await r_agent.get_aesthetic()
 
-            self.collab_arts.append({'addr': self.caddr,
-                                     'init': self.cinit,
-                                     'found_best': True,
-                                     'other_aest': r_aesthetic,
-                                     'self_pass': passed,
-                                     'other_pass': ret,
-                                     'value': fr['value'],
-                                     'novelty': fr['novelty'],
-                                     'evaluation': e,
-                                     'i': self.age})
+            self._log(logging.INFO,
+                      'Collaborated with {} ({}). E={} [V:{} ({}) N:{}]'
+                      .format(self.caddr, caest, e, v, mv, n))
+            #self.add_artifact(best)
 
-            if passed and ret:
-                self._log(logging.DEBUG, "Collab artifact passed both thresholds.")
-                self.learn(best)
+            aid = get_aid(self.addr, self.age, self.aesthetic, v, n, self.caddr, caest)
+            best.aid = aid
+            art = await r_agent.rcv_collab_artifact(best, self.aesthetic)
+
+            passed = bool(fr['pass_value'] and fr['pass_novelty'])
+            if passed:
+                # self._log(logging.DEBUG, "Collab artifact passed both thresholds.")
+                self.learn(art)
 
             # Save artifact to save folder
-            aid = "{:0>5}_{}-{}".format(self.age, self.aesthetic, r_aesthetic)
-            self.save_artifact(best, pset=self.super_pset, aid=aid)
+            self.save_artifact(art, pset=self.super_pset, aid=aid)
+            self.append_coa(True, caest, art)
+            self.last_artifact = art
         else:
             r_agent = await self.connect(self.caddr)
             r_aesthetic = await r_agent.get_aesthetic()
-            ret = await r_agent.rcv_collab_artifact(None, self.addr, self.aesthetic, False)
-            self.collab_arts.append({'addr': self.caddr,
-                                     'init': self.cinit,
-                                     'found_best': False,
-                                     'other_aest': r_aesthetic,
-                                     'self_pass': False,
-                                     'other_pass': False,
-                                     'value': None,
-                                     'novelty': None,
-                                     'evaluation': None,
-                                     'i': self.age})
+            ret = await r_agent.rcv_collab_artifact(None, self.aesthetic)
+            self.append_coa(False, r_aesthetic, None)
+            self.last_artifact = None
             self._log(logging.INFO,
                       "could not agree on a collaboration result with {}!"
                       .format(self.caddr))
@@ -519,27 +618,27 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             self._log(logging.INFO,
                       'Created an individual artifact. E={} (V:{}, N:{})'
                       .format(np.around(e, 2), v, n))
-            self.add_artifact(artifact)
+            #self.add_artifact(artifact)
 
             # Artifact is acceptable if it passes value and novelty thresholds.
             # It is questionable if we need these, however.
             passed = fr['pass_value'] and fr['pass_novelty']
             if passed:
-                self._log(logging.DEBUG, "Individual artifact passed thresholds")
+                self._log(logging.DEBUG,
+                          "Individual artifact passed thresholds")
                 self.learn(artifact)
 
-            self.own_arts.append({'self_pass': True,
-                                  'value': fr['value'],
-                                  'novelty': fr['novelty'],
-                                  'evaluation': e,
-                                  'i': self.age})
-
             # Save artifact to save folder
-            aid = "{:0>5}_{}_v{}_n{}".format(self.age, self.aesthetic, v, n)
+            aid = get_aid(self.addr, self.age, self.aesthetic, v, n)
+            artifact.aid = aid
             self.save_artifact(artifact, pset=self.super_pset, aid=aid)
+            # Append to own artifacts
+            self.append_oa(artifact)
+            self.last_artifact = artifact
 
     @aiomas.expose
     async def act(self, *args, **kwargs):
+        self.last_artifact = None
         self.age += 1
         if self.age % 2 == 1:
             return await self.act_individual(*args, **kwargs)
@@ -547,56 +646,38 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             return await self.act_collab(*args, **kwargs)
 
     @aiomas.expose
+    def show_artifact(self, artifact):
+        """USE LEARNING MODEL HERE.
+        """
+        # Do not learn artifact again if it has been shown already.
+        if self.name in artifact.framings:
+            return artifact.evals[self.name], artifact.framings[self.name]
+
+        e, fr = self.evaluate(artifact)
+        self.learn(artifact)
+        return e, fr
+
+    @aiomas.expose
+    def get_last_artifact(self):
+        return self.last_artifact
+
+    @aiomas.expose
     def save_arts_info(self):
-        oa = self.own_arts
-        ca = self.collab_arts
         sfold = self.artifact_save_folder
-        writes = []
-        # Own artifacts
-        if len(oa) > 0:
-            es = ('evaluations.txt', [a['evaluation'] for a in oa])
-            ns = ('novelties.txt', [a['novelty'] for a in oa])
-            vs = ('values.txt', [a['value'] for a in oa])
-            ps = ('passes.txt', [a['self_pass'] for a in oa])
-            ages = ('iters.txt', [a['i'] for a in oa])
-            writes += [es, ns, vs, ps]
 
-            # Running means
-            mes = ('mevaluations.txt', [sum(es[1][:i])/(i+1) for i in range(len(oa))])
-            mns = ('mnovelties.txt', [sum(ns[1][:i])/(i+1) for i in range(len(oa))])
-            mvs = ('mvalues.txt', [sum(vs[1][:i])/(i+1) for i in range(len(oa))])
-            mps = ('mpasses.txt', [sum(ps[1][:i])/(i+1) for i in range(len(oa))])
-            writes += [mes, mns, mvs, mps]
-        else:
-            writes += [None, None, None, None]
+        with open(os.path.join(sfold, 'own_arts.pkl'), 'wb') as f:
+            pickle.dump(self.own_arts, f)
 
-        # Collaborated artifacts
-        if len(ca) > 0:
-            ces = ('cevaluations.txt', [a['evaluation'] for a in ca if a['evaluation'] is not None])
-            cns = ('cnovelties.txt', [a['novelty'] for a in ca if a['novelty'] is not None])
-            cvs = ('cvalues.txt', [a['value'] for a in ca if a['value'] is not None])
-            cps = ('cpasses.txt', [a['self_pass'] for a in ca])
-            cages = ('citers.txt', [a['i'] for a in ca])
-            writes += [ces, cns, cvs, cps, cages]
+        # with open(os.path.join(sfold, 'own_evals.pkl'), 'wb') as f:
+        #     pickle.dump(self.own_evals, f)
 
-            # Running means
-            mces = ('mcevaluations.txt', [sum(ces[1][:i])/(i+1) for i in range(len(ca))])
-            mcns = ('mcnovelties.txt', [sum(cns[1][:i])/(i+1) for i in range(len(ca))])
-            mcvs = ('mcvalues.txt', [sum(cvs[1][:i])/(i+1) for i in range(len(ca))])
-            mcps = ('mcpasses.txt', [sum(cps[1][:i])/(i+1) for i in range(len(ca))])
-            writes += [mces, mcns, mcvs, mcps]
-        else:
-            writes += [None, None, None, None]
+        with open(os.path.join(sfold, 'collab_arts.pkl'), 'wb') as f:
+            pickle.dump(self.collab_arts, f)
 
-        for w in writes:
-            if w is not None:
-                fname, data = w
-                fpath = os.path.join(sfold, fname)
-                with open(fpath, 'w') as f:
-                    for d in data:
-                        f.write("{}\n".format(d))
+        # with open(os.path.join(sfold, 'collab_evals.pkl'), 'wb') as f:
+        #     pickle.dump(self.collab_evals, f)
 
-        return writes
+        return self.aesthetic, self.own_arts, self.own_evals, self.collab_arts, self.collab_evals
 
     # @aiomas.expose
     # def close(self, folder=None):
@@ -643,7 +724,13 @@ class CollabEnvironment(StatEnvironment):
     """
 
     def __init__(self, *args, **kwargs):
+        self.save_folder = kwargs.pop('save_folder', None)
         super().__init__(*args, **kwargs)
+        self.ind_evals = {}
+        self.collab_evals = {}
+        self.pref_lists = {'rankings': [],
+                           'pairings': []}
+        self.age = 0
 
     def generate_rankings(self, addrs):
         """Generate random rankings by which order agents in ``addrs`` can
@@ -685,14 +772,23 @@ class CollabEnvironment(StatEnvironment):
             r_agent = await self.connect(addr, timeout=5)
             return await r_agent.force_collab(caddr, cinit)
 
-        self._log(logging.DEBUG,
-                  "Matching collaboration partners for step {}.".format(age))
+        self.age = age
+        collab_step = age % 2 == 0
+
+        if collab_step:
+            self._log(logging.DEBUG,
+                      "Matching collaboration partners for step {}.".format(age))
         pref_lists = {}
         addrs = self.get_agents(addr=True)
         tasks = create_tasks(slave_task, addrs, flatten=False)
         ret = run(tasks)
         pref_lists.update(ret)
+        for addr, pl in ret:
+            if addr not in self.pref_lists:
+                self.pref_lists[addr] = []
+            self.pref_lists[addr].append(pl)
         rankings = self.generate_rankings(pref_lists.keys())
+        self.pref_lists['rankings'].append(rankings)
         in_collab = []
         matches = []
         for agent, rank in rankings:
@@ -704,16 +800,21 @@ class CollabEnvironment(StatEnvironment):
                       .format(agent))
 
             else:
-                self._log(logging.DEBUG,
-                          "Choosing {} to collab with {}.".format(agent, addr))
+                if collab_step:
+                    self._log(logging.DEBUG,
+                            "Choosing {} to collab with {}.".format(agent, addr))
                 in_collab.append(agent)
                 in_collab.append(addr)
                 matches.append((agent, addr))
 
-        for a1, a2 in matches:
-            run(slave_task2(a1, a2, cinit=True))
-            run(slave_task2(a2, a1, cinit=False))
-            print("{} initializes collab with {}".format(a1, a2))
+        self.pref_lists['pairings'].append(matches)
+        #pprint.pprint(self.pref_lists)
+        if collab_step:
+            for a1, a2 in matches:
+                run(slave_task2(a1, a2, cinit=True))
+                run(slave_task2(a2, a1, cinit=False))
+                self._log(logging.INFO,
+                        "{} initializes collab with {}".format(a1, a2))
 
         if len(matches) != int(len(addrs) / 2):
             print("HÄLÄRMRMRMRMRMR length of matches is not the same as the number of pairs.")
@@ -727,79 +828,89 @@ class CollabEnvironment(StatEnvironment):
         tasks = create_tasks(slave_task, addrs, flatten=False)
         run(tasks)
 
-    def analyse_arts_inform(self, agent, own_arts, collab_arts):
-        # print("Analysing {}".format(agent))
-
-        meval = 0.0
-        mnovelty = 0.0
-        mvalue = 0.0
-        mpassed = 0.0
-        loa = len(own_arts)
+    def analyse_arts_inform(self, agent, aest, own_arts, collab_arts):
+        loa = len(own_arts['eval'])
         if loa > 0:
-            for a in own_arts:
-                mpassed += a['self_pass']
-                meval += a['evaluation']
-                mnovelty += a['novelty']
-                mvalue += a['value']
+            meval = np.mean(own_arts['eval'])
+            mnovelty = np.mean(own_arts['nov'])
+            mvalue = np.mean(own_arts['val'])
+            self._log(logging.INFO,
+                      "{} {} own: e={:.3f} n={:.3f} v={:.3f} ({:.3f})"
+                      .format(agent, aest, meval, mnovelty, mvalue, own_arts['mval'][-1]))
 
-            mpassed /= loa
-            meval /= loa
-            mnovelty /= loa
-            mvalue /= loa
-            print("{} own: p={:.3f} e={:.3f} n={:.3f} v={:.3f}"
-                  .format(agent, mpassed, meval, mnovelty, mvalue))
-
+        mfound = 0.0
         mceval = 0.0
         mcnovelty = 0.0
         mcvalue = 0.0
-        mspassed = 0.0
-        mopassed = 0.0
-        mbpassed = 0.0
-        mfound = 0.0
-        coa = len(collab_arts)
-        if coa > 0:
-            for a in collab_arts:
-                if a['found_best']:
+        coa = len(collab_arts['fb'])
+        if coa > 0 and np.sum(collab_arts['fb']) > 0:
+            for i in range(len(collab_arts['eval'])):
+                if collab_arts['fb'][i]:
                     mfound += 1
-                    mspassed += a['self_pass']
-                    mopassed += a['other_pass']
-                    mbpassed += a['self_pass'] and a['other_pass']
-                    mceval += a['evaluation']
-                    mcnovelty += a['novelty']
-                    mcvalue += a['value']
+                    mceval += collab_arts['eval'][i]
+                    mcnovelty += collab_arts['nov'][i]
+                    mcvalue += collab_arts['val'][i]
 
             if mfound > 0:
-                mspassed /= mfound
-                mopassed /= mfound
-                mbpassed /= mfound
                 mceval /= mfound
                 mcnovelty /= mfound
                 mcvalue /= mfound
                 mfound /= coa
-                print("{} collab: fb={:.3f}, ps={:.3f} po={:.3f} pb={:.3f} e={:.3f} n={:.3f} v={:.3f}"
-                      .format(agent, mfound, mspassed, mopassed, mbpassed, mceval, mcnovelty, mcvalue))
-                print("{} ratio (ind/col): arts={:.3f} ({}/{}) e={:.3f} n={:.3f} v={:.3f}"
-                      .format(agent, loa/coa, loa, coa, meval/mceval, mnovelty/mcnovelty, mvalue/mcvalue))
+                self._log(logging.INFO,
+                          "{} {} collab: fb={:.3f}, e={:.3f} n={:.3f} v={:.3f}"
+                          .format(agent, aest, mfound, mceval, mcnovelty, mcvalue))
+                self._log(logging.INFO,
+                          "{} {} ratio (ind/col): arts={:.3f} ({}/{}) e={:.3f} n={:.3f} v={:.3f}"
+                          .format(agent, aest, loa/coa, loa, coa, meval/mceval, mnovelty/mcnovelty, mvalue/mcvalue))
             else:
-                print("{} collab: fb=0".format(agent))
+                self._log(logging.INFO, "{} collab: fb=0".format(agent))
 
     def analyse_all(self):
         async def slave_task(addr):
             r_agent = await self.connect(addr, timeout=5)
-            oa, ca = await r_agent.get_arts_information()
-            return addr, oa, ca
+            aest, oa, ca = await r_agent.get_arts_information()
+            return addr, aest, oa, ca
 
         addrs = self.get_agents(addr=True)
         tasks = create_tasks(slave_task, addrs, flatten=False)
         rets = run(tasks)
-        for agent, oa, ca in rets:
-            self.analyse_arts_inform(agent, oa, ca)
+        for agent, aest, oa, ca in rets:
+            self.analyse_arts_inform(agent, aest, oa, ca)
 
     def post_cbk(self, *args, **kwargs):
+        self.collect_evaluations()
         self.clear_collabs()
         self.analyse_all()
 
-    def save_artifact_info(self, path):
+    def collect_evaluations(self):
+        """Collect evaluations from all agents for all artifacts made in the
+        previous step.
+        """
+        async def slave_task(addr):
+            r_agent = await self.connect(addr, timeout=5)
+            ret = await r_agent.get_last_artifact()
+            return addr, ret
+
+        async def slave_task2(addr, artifact):
+            r_agent = await self.connect(addr, timeout=5)
+            ret = await r_agent.show_artifact(artifact)
+            return addr, ret
+
+        eval_dict = self.collab_evals if self.age % 2 == 0 else self.ind_evals
+
+        addrs = self.get_agents(addr=True)
+        tasks = create_tasks(slave_task, addrs, flatten=False)
+        rets = run(tasks)
+
+        for r in rets:
+            if r[1] is not None:
+                tasks = create_tasks(slave_task2, addrs, r[1], flatten=False)
+                rets = run(tasks)
+                eval_dict[r[1].aid] = {ret[0]: ret[1] for ret in rets}
+                eval_dict[r[1].aid]['creator'] = r[1].creator
+        # print(eval_dict)
+
+    def save_artifact_info(self):
         async def slave_task(addr):
             r_agent = await self.connect(addr, timeout=5)
             ret = await r_agent.save_arts_info()
@@ -811,20 +922,15 @@ class CollabEnvironment(StatEnvironment):
         addrs = self.get_agents(addr=True)
         tasks = create_tasks(slave_task, addrs, flatten=False)
         rets = run(tasks)
-        collected = {}
-        for agent, ret in rets:
-            for r in ret:
-                if r is not None:
-                    if r[0] not in collected:
-                        collected[r[0]] = []
-                    rs = [e for e in r[1] if e is not None]
-                    llen = len(rs)
-                    collected[r[0]].append((sum(rs), llen))
+        sfold = self.save_folder
 
-        for k, v in collected.items():
-            ssum = sum([s[0] for s in v])
-            lens = sum([s[1] for s in v])
-            mm = ssum / lens
-            fpath = os.path.join(path, k)
-            with open(fpath, 'w') as f:
-                f.write("{}\n".format(mm))
+        with open(os.path.join(sfold, 'ind_evals.pkl'), 'wb') as f:
+            pickle.dump(self.ind_evals, f)
+
+        with open(os.path.join(sfold, 'collab_evals.pkl'), 'wb') as f:
+            pickle.dump(self.collab_evals, f)
+
+        with open(os.path.join(sfold, 'pref_lists.pkl'), 'wb') as f:
+            pickle.dump(self.pref_lists, f)
+
+        return rets, self.ind_evals, self.collab_evals

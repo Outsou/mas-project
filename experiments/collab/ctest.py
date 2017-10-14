@@ -1,3 +1,4 @@
+
 import logging
 import pprint
 import random
@@ -20,20 +21,20 @@ if __name__ == "__main__":
     shape = (64, 64)
     sample_size = 8
     #create_kwargs = coe.get_create_kwargs(20, (64, 64))
-    menv = coe.create_environment(num_of_slaves=8)
     params = coe.DEFAULT_PARAMS
-    params['agents'] = 10
+    params['agents'] = 20
     params['novelty_weight'] = 0.2
     # params['model'] = 'Q'
 
     # END PARAM DEF
 
     # CREATE SIMULATION AND RUN
-    path = 't033_a{}_e{}_i{}'\
+    path = 't044_1_a{}_e{}_i{}'\
         .format(params['agents'], len(params['aesthetic_list']), num_of_steps)
     log_folder = 'foo'
     coe._init_data_folder(path)
 
+    menv = coe.create_environment(num_of_slaves=8, save_folder=path)
     r = coe.create_agents('experiments.collab.base:GPCollaborationAgent',
                           menv, params, log_folder, path, pop_size, shape,
                           sample_size)
@@ -56,5 +57,5 @@ if __name__ == "__main__":
         print('Step {}/{} finished in {:.3f} seconds. Estimated run end time at: {}'
               .format((i + 1), num_of_steps, step_time, run_end_time))
 
-    menv.save_artifact_info(path)
+    rets = menv.save_artifact_info()
     sim.end()
