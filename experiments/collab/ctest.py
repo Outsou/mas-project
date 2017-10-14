@@ -1,3 +1,4 @@
+
 import logging
 import pprint
 import random
@@ -14,7 +15,7 @@ from experiments.collab.base import CollabSimulation
 
 if __name__ == "__main__":
     # DEFINE TEST PARAMETERS
-    num_of_steps = 20
+    num_of_steps = 200
     pop_size = 20
     shape = (64, 64)
     sample_size = 8
