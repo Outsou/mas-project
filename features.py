@@ -150,6 +150,7 @@ class ImageEntropyFeature(Feature):
         # Convert color image to black and white
         if len(img.shape) == 3:
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        img = img.astype(np.uint8)
         hg = cv2.calcHist([img], [0], None, [256], [0, 256])
         # Compute probabilities for each bin in histogram
         hg = hg / (img.shape[0] * img.shape[1])

@@ -25,16 +25,18 @@ from experiments.collab.base import CollabEnvironment, CollabSimulation
 
 # Default values for simulation parameters
 DEFAULT_PARAMS = {
-    'agents': 2,
+    'agents': 20,
     'critic_threshold': 0.0,
     'veto_threshold': 0.0,
-    'novelty_weight': -1,
+    'novelty_weight': 0.2,
     'mem_size': 500,
     'search_width': 10,
     'shape': (64, 64),
     'output_shape': (200, 200),
     'model': 'random',  # learning model for choosing collaboration partners
     'pset_sample_size': 8,
+    'number_of_steps': 200,
+    'population_size': 20,
     'aesthetic_list': ['entropy', 'benford', 'fd_aesthetics', 'global_contrast_factor', 'symm_ne']
 }
 
@@ -140,7 +142,7 @@ def create_agents(agent_cls, menv, params, log_folder, save_folder,
         memsize = params['mem_size']
         search_width = params['search_width']
         shape = params['shape']
-        collab_model = params['model']
+        collab_model = params['model'] # Learning model
         output_shape = params['output_shape']
         aesthetics = [ae_list[i % len(ae_list)]]
         rules = _make_rules(aesthetics, shape)

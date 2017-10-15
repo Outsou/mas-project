@@ -174,7 +174,7 @@ class GeneticImageArtifact(Artifact):
             return np.sqrt(np.sum(distances))
 
     @staticmethod
-    def generate_image(func, shape=(32, 32), bw=True):
+    def generate_image(func, shape=(32, 32), bw=True, str_func=None):
         """
         Creates an image.
 
@@ -205,8 +205,9 @@ class GeneticImageArtifact(Artifact):
                 img[x, y] = val
         except:
             print(traceback.format_exc())
-            print(str(func), func)
-            return img
+            print(func, str_func)
+            # Return black image if any errors occur.
+            return np.zeros(img.shape, dtype=np.uint8)
 
         # Clip values in range [0, 255]
         img = np.clip(img, 0, 255, out=img)
@@ -231,7 +232,8 @@ class GeneticImageArtifact(Artifact):
                 func = gp.compile(individual, individual.pset)
             except MemoryError:
                 return -1,
-            image = GeneticImageArtifact.generate_image(func, shape)
+            func_str = str(individual)
+            image = GeneticImageArtifact.generate_image(func, shape, func_str)
             individual.image = image
 
         # Convert deap individual to creamas artifact for evaluation
@@ -295,8 +297,10 @@ class GeneticImageArtifact(Artifact):
                     toolbox.mate(child1, child2)
                     del child1.fitness.values
                     del child2.fitness.values
-                    del child1.image
-                    del child2.image
+                    if child1.image is not None:
+                        del child1.image
+                    if child2.image is not None:
+                        del child2.image
 
             for mutant in offspring:
                 if np.random.random() < mutpb:

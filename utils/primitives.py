@@ -115,6 +115,10 @@ def plasma(x, y, t, scale):
 
 
 def parab(x):
+    if x > 100000:
+        x = 100000
+    if x < -100000:
+        x = -100000
     return 4 * (x - 0.5) ** 2
 
 
