@@ -851,6 +851,7 @@ class CollabEnvironment(StatEnvironment):
                     mcnovelty += collab_arts['nov'][i]
                     mcvalue += collab_arts['val'][i]
 
+            cfound = int(mfound)
             if mfound > 0:
                 mceval /= mfound
                 mcnovelty /= mfound
@@ -861,7 +862,7 @@ class CollabEnvironment(StatEnvironment):
                           .format(agent, aest, mfound, mceval, mcnovelty, mcvalue))
                 self._log(logging.INFO,
                           "{} {} ratio (ind/col): arts={:.3f} ({}/{}) e={:.3f} n={:.3f} v={:.3f}"
-                          .format(agent, aest, loa/coa, loa, coa, meval/mceval, mnovelty/mcnovelty, mvalue/mcvalue))
+                          .format(agent, aest, loa/cfound, loa, cfound, meval/mceval, mnovelty/mcnovelty, mvalue/mcvalue))
             else:
                 self._log(logging.INFO, "{} collab: fb=0".format(agent))
 

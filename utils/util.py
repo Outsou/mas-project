@@ -20,17 +20,18 @@ import copy
 import math
 
 
-class RandEphemeralConstant(gp.Ephemeral):
+class Rand(gp.Ephemeral):
 
-    def __init__(self, *args, **kwargs):
-        self.ret = RandEphemeralConstant.func()
-        super().__init__(*args, **kwargs)
+    ret = float
 
     @staticmethod
-    def func(self):
+    def func():
         return np.random.random() * 2 - 1
 
-rand_eph = RandEphemeralConstant
+
+# Set the attribute to deap's gp-module to circumvent some problems with
+# ephemeral constants.
+setattr(gp, 'Rand', Rand)
 
 
 MAX_DEPTH = 8
@@ -207,6 +208,7 @@ def create_super_pset(bw=True):
     #pset.addEphemeralConstant('pink', sample_pink, float)
     pset.addTerminal(1.6180, float)  # Golden ratio
     pset.addTerminal(np.pi, float)
+    pset.addEphemeralConstant('Rand', Rand.func, float)
     #pset.addEphemeralConstant('rand', m.rand_eph, float)
     #pset.addEphemeralConstant('rand', rand_eph, float)
 
@@ -243,7 +245,7 @@ def create_sample_pset(bw=True, sample_size=8):
     #pset.addEphemeralConstant('pink', sample_pink, float)
     pset.addTerminal(1.6180, float)  # Golden ratio
     pset.addTerminal(np.pi, float)
-    #pset.addEphemeralConstant('rand', m.rand_eph, float)
+    pset.addEphemeralConstant('Rand', Rand.func, float)
 
     # Other primitives are sampled from the defined primitive set.
     keys = list(primitives.keys())

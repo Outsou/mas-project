@@ -1,6 +1,5 @@
 import math
-
-import numpy as np
+import random
 
 from noise import snoise2, pnoise1, pnoise2
 
@@ -10,7 +9,7 @@ HVAL = 10
 
 
 def rand_eph():
-    return np.random.random() * 2 - 1
+    return random.random() * 2 - 1
 
 
 def _check_hval(x):
@@ -74,7 +73,7 @@ def safe_sinh(x):
 
 
 def mdist(a, b):
-    return np.abs(a-b)
+    return abs(a-b)
 
 
 def safe_pow(a, b):
