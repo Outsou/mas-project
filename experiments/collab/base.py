@@ -21,6 +21,7 @@ from environments import StatEnvironment
 from agents import GPImageAgent, agent_name_parse
 from artifacts import GeneticImageArtifact as GIA
 from experiments.collab.ranking import choose_best
+from learners import MultiLearner
 
 __all__ = ['CollaborationBaseAgent',
            'GPCollaborationAgent',
@@ -121,6 +122,17 @@ class CollaborationBaseAgent(GPImageAgent):
         self.cinit = False      # Is this agent the initiator of collaboration
         md = GIA.max_distance(self.create_kwargs)
         self.stmem = ImageSTMemory(GIA, md, self.mem_size)
+        self.learner = None
+
+    @aiomas.expose
+    def add_connections(self, conns):
+        rets = super().add_connections(conns)
+
+        # Initialize the multi-model learner
+        self.learner = MultiLearner(list(self.connections),
+                                    len(self.R))
+
+        return rets
 
     @aiomas.expose
     def force_collab(self, addr, init):
@@ -160,10 +172,12 @@ class CollaborationBaseAgent(GPImageAgent):
         This list is used to choose collaboration partners in
         :meth:`CollabEnvironment.match_collab_partners`.
         """
-        partners = list(self.connections.keys())
         if self.collab_model == 'random':
+            partners = list(self.connections.keys())
             random.shuffle(partners)
         # TODO: ADD Q-LEARNING ETC. MODELS HERE
+        if self.collab_model == 'Q':
+            partners = self.learner.bandit_choose(get_list=True)
         return self.addr, partners
 
     @aiomas.expose
@@ -550,6 +564,10 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
             #print("Chose best image with ranking {}".format(ranking))
             e, fr = self.evaluate(best)
+
+            if self.collab_model == 'Q':
+                self.learner.update_bandit(e, self.caddr)
+
             #print("Evals: {}".format(best.evals))
             #print("Framings: {}".format(best.framings))
             n = None if fr['novelty'] is None else np.around(fr['novelty'], 2)
@@ -660,6 +678,17 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         #     pickle.dump(self.collab_evals, f)
 
         return self.aesthetic, self.own_arts, self.own_evals, self.collab_arts, self.collab_evals
+
+    # @aiomas.expose
+    # def close(self, folder=None):
+    #     aest_counts = {}
+    #     for art in self.collab_arts:
+    #         other_aest = art['other_aest']
+    #         if other_aest not in aest_counts:
+    #             aest_counts[other_aest] = 1
+    #         else:
+    #             aest_counts[other_aest] += 1
+    #     self._log(logging.INFO, str(aest_counts))
 
 
 class CollabSimulation(Simulation):

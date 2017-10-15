@@ -1,6 +1,5 @@
 """Command line script to run collaboration tests.
 """
-
 import logging
 import pprint
 import random
@@ -16,6 +15,7 @@ from creamas import Simulation
 from agents import GPImageAgent
 from experiments.collab import collab_exp as coe
 from experiments.collab.base import CollabSimulation
+import time
 
 
 HOST = socket.gethostname()
@@ -49,8 +49,16 @@ def run_sim(params, save_path, log_folder):
                            log_folder=log_folder)
 
     # RUN SIMULATION
+    step_times = []
     for i in range(num_of_steps):
+        step_start = time.monotonic()
         sim.async_step()
+        step_time = time.monotonic() - step_start
+        step_times.append(step_time)
+        mean_step_time = np.mean(step_times)
+        run_end_time = time.ctime(time.time() + (mean_step_time * (num_of_steps - (i + 1))))
+        print('Step {}/{} finished in {:.3f} seconds. Estimated run end time at: {}'
+              .format((i + 1), num_of_steps, step_time, run_end_time))
 
     rets = menv.save_artifact_info()
     sim.end()
@@ -99,7 +107,7 @@ if __name__ == "__main__":
     # additional folders are spawned (or folders
     os.makedirs(run_folder, exist_ok=False)
     print("Initializing run with {} agents, {} aesthetic measures, {} model, "
-        "{} steps.".format(args.agents, len(params['aesthetic_list']),
+          "{} steps.".format(args.agents, len(params['aesthetic_list']),
                            args.model, args.steps))
     print("Saving run output to {}".format(run_folder))
     #os.makedirs(log_folder, exist_ok=True)

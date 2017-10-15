@@ -194,7 +194,7 @@ class MultiLearner():
             return np.random.choice(list(self.bandits.keys()))
 
         if get_list:
-            keys, vals = zip(*sorted(self.bandits.items(), key=itemgetter(1)))
+            keys, vals = zip(*sorted(self.bandits.items(), key=itemgetter(1), reverse=True))
             return keys
 
         best = -np.inf

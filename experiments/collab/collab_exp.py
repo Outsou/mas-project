@@ -37,7 +37,7 @@ DEFAULT_PARAMS = {
     'pset_sample_size': 8,
     'number_of_steps': 200,
     'population_size': 20,
-    'aesthetic_list': ['entropy', 'benford', 'fd_aesthetics', 'global_contrast_factor', 'symm_ne']
+    'aesthetic_list': ['entropy', 'benford', 'fd_aesthetics', 'global_contrast_factor', 'symm']
 }
 
 
