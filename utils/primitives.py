@@ -103,7 +103,7 @@ def perlin2(x, y):
 
 
 def plasma(x, y, t, scale):
-    if scale < 0:
+    if scale <= 0:
         scale = MINVAL
     v1 = math.sin(x * scale + t)
     v2 = math.sin(scale * (x * math.sin(t / 2) + y * math.cos(t / 3)) + t)
