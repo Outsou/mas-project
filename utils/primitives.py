@@ -12,6 +12,14 @@ def rand_eph():
     return random.random() * 2 - 1
 
 
+def sign(x):
+    if x < 0:
+        return -1.0
+    if x > 0:
+        return 1.0
+    return 0.0
+
+
 def _check_hval(x):
     if x > HVAL:
         return HVAL

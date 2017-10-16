@@ -49,11 +49,11 @@ primitives = {
     'tanh': (math.tanh, [float], float),
     'atan': (math.atan, [float], float),
     'hypot': (math.hypot, [float, float], float),
-    'abs': (np.abs, [float], float),
+    'abs': (abs, [float], float),
     'abs_sqrt': (m.abs_sqrt, [float], float),
     'parab': (m.parab, [float], float),
     'avg_sum': (m.avg_sum, [float, float], float),
-    'sign': (np.sign, [float], float),
+    'sign': (m.sign, [float], float),
     'mdist': (m.mdist, [float, float], float),
     'simplex2': (m.simplex2, [float, float], float),
     'perlin2': (m.perlin2, [float, float], float),
@@ -175,18 +175,18 @@ def create_super_pset(bw=True):
     # Other math
     pset.addPrimitive(m.safe_log2, [float], float)
     pset.addPrimitive(m.safe_log10, [float], float)
-    pset.addPrimitive(np.sin, [float], float)
-    pset.addPrimitive(np.cos, [float], float)
+    pset.addPrimitive(math.sin, [float], float)
+    pset.addPrimitive(math.cos, [float], float)
     pset.addPrimitive(m.safe_sinh, [float], float)
     pset.addPrimitive(m.safe_cosh, [float], float)
     pset.addPrimitive(math.tanh, [float], float)
     pset.addPrimitive(math.atan, [float], float)
     pset.addPrimitive(math.hypot, [float, float], float)
-    pset.addPrimitive(np.abs, [float], float)
+    pset.addPrimitive(abs, [float], float)
     pset.addPrimitive(m.abs_sqrt, [float], float)
     pset.addPrimitive(m.parab, [float], float)
     pset.addPrimitive(m.avg_sum, [float, float], float)
-    pset.addPrimitive(np.sign, [float], float)
+    pset.addPrimitive(m.sign, [float], float)
     pset.addPrimitive(m.mdist, [float, float], float)
     #pset.addPrimitive(exp, [float], float)
     #pset.addPrimitive(safe_pow, [float, float], float)
