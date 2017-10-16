@@ -28,7 +28,7 @@ DEFAULT_PARAMS = {
     'agents': 20,
     'critic_threshold': 0.0,
     'veto_threshold': 0.0,
-    'novelty_weight': 0.2,
+    'novelty_weight': 0.5,
     'mem_size': 500,
     'search_width': 10,
     'shape': (64, 64),

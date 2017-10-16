@@ -37,6 +37,13 @@ def run_sim(params, save_path, log_folder):
     pop_size = params['population_size']
     shape = params['shape']
     sample_size = params['pset_sample_size']
+
+    with open(os.path.join(save_path, 'rinfo.txt'), 'w') as f:
+        f.write("HOST: {}\n\n".format(HOST))
+        f.write("PARAMS:\n")
+        f.write(pprint.pformat(params))
+        f.write("\n\n")
+
     menv = coe.create_environment(num_of_slaves=nslaves, save_folder=save_path)
     r = coe.create_agents('experiments.collab.base:GPCollaborationAgent',
                           menv, params, log_folder, save_path, pop_size, shape,
@@ -56,12 +63,20 @@ def run_sim(params, save_path, log_folder):
         step_time = time.monotonic() - step_start
         step_times.append(step_time)
         mean_step_time = np.mean(step_times)
-        run_end_time = time.ctime(time.time() + (mean_step_time * (num_of_steps - (i + 1))))
-        print('Step {}/{} finished in {:.3f} seconds. Estimated run end time at: {}'
+        run_end_time = time.ctime(time.time() +
+                                  (mean_step_time * (num_of_steps - (i + 1))))
+        print('Step {}/{} finished in {:.3f} seconds. Estimated end time at: {}'
               .format((i + 1), num_of_steps, step_time, run_end_time))
+        with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
+            f.write('{}: Step {}/{}, estimated end time {}.\n'
+                    .format(time.ctime(time.time()), i + 1, num_of_steps,
+                            run_end_time))
+
 
     rets = menv.save_artifact_info()
     sim.end()
+    with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
+        f.write('Run finished at {}\n'.format(time.ctime(time.time())))
     return rets
 
 if __name__ == "__main__":
@@ -75,9 +90,11 @@ if __name__ == "__main__":
     parser.add_argument('-m', metavar='model', type=str, dest='model',
                         help="Learning model to be used.", default='random')
     parser.add_argument('-n', metavar='novelty', type=int, dest='novelty',
-                        help="Novelty weight.", default=0.2)
+                        help="Novelty weight.", default=0.5)
     parser.add_argument('-l', metavar='folder', type=str, dest='save_folder',
-                        help="Base folder to save test run. The actual save folder is created as a subfolder to the base folder.",
+                        help="Base folder to save the test run. Actual save "
+                             "folder is created as a subfolder to the base " 
+                             "folder.",
                         default="runs")
     parser.add_argument('-r', metavar='run ID', type=int, dest='run_id',
                         help="Run ID, if needed to set manually.", required=False)
@@ -96,9 +113,9 @@ if __name__ == "__main__":
     run_id = args.run_id if args.run_id is not None else get_run_id(base_path)
 
     # CREATE SIMULATION AND RUN
-    run_folder = 'r{:0>4}m{}a{}e{}i{}_{}'.format(
+    run_folder = 'r{:0>4}m{}a{}e{}i{}'.format(
         run_id, learning_model, params['agents'], len(params['aesthetic_list']),
-        params['num_of_steps'], HOST)
+        params['num_of_steps'])
     if len(base_path) > 0:
         run_folder = os.path.join(base_path, run_folder)
         log_folder = run_folder
@@ -108,7 +125,7 @@ if __name__ == "__main__":
     os.makedirs(run_folder, exist_ok=False)
     print("Initializing run with {} agents, {} aesthetic measures, {} model, "
           "{} steps.".format(args.agents, len(params['aesthetic_list']),
-                           args.model, args.steps))
+                             args.model, args.steps))
     print("Saving run output to {}".format(run_folder))
     #os.makedirs(log_folder, exist_ok=True)
     run_sim(params, run_folder, log_folder)
