@@ -72,7 +72,6 @@ def run_sim(params, save_path, log_folder):
                     .format(time.ctime(time.time()), i + 1, num_of_steps,
                             run_end_time))
 
-
     rets = menv.save_artifact_info()
     sim.end()
     with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
@@ -128,6 +127,6 @@ if __name__ == "__main__":
           "{} steps.".format(args.agents, len(params['aesthetic_list']),
                              args.model, args.steps))
     print("Saving run output to {}".format(run_folder))
-    #os.makedirs(log_folder, exist_ok=True)
+    # os.makedirs(log_folder, exist_ok=True)
     run_sim(params, run_folder, log_folder)
 

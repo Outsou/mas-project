@@ -29,6 +29,14 @@ __all__ = ['CollaborationBaseAgent',
            'CollabSimulation']
 
 
+def csplit(creator):
+    """Split creator name.
+
+    :returns: tuple of creators. (length 1 if individual, length 2 if collab)
+    """
+    return creator.split(" - ")
+
+
 def get_aid(addr, age, aest, val, nov, caddr=None, caest=None):
     aid = ""
     if caddr is None:
@@ -682,8 +690,27 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             return artifact.evals[self.name], artifact.framings[self.name]
 
         e, fr = self.evaluate(artifact)
-        self.learn(artifact)
+        # Fixed threshold here.
+        if fr['novelty'] > 0.2:
+            self._log(logging.INFO,
+                      "Learning (n={}): {}".format(fr['novelty'], artifact.aid))
+            self.learn(artifact)
         return e, fr
+
+    @aiomas.expose
+    def rcv_evaluations_from_artifact(self, aid, evaluations):
+        """LEARN MODEL HERE IF NEEDED.
+
+        :param str aid: Artifact ID
+
+        :param dict evaluations:
+           Keys are addresses and values are evaluation, framing pairs.
+        """
+        self._log(logging.INFO,
+                  "Got evals from {}: {}".format(aid, evaluations))
+        if self.collab_model == 'random':
+            return
+
 
     @aiomas.expose
     def get_last_artifact(self):
@@ -803,9 +830,12 @@ class CollabEnvironment(StatEnvironment):
         self.age = age
         collab_step = age % 2 == 0
 
-        if collab_step:
-            self._log(logging.DEBUG,
-                      "Matching collaboration partners for step {}.".format(age))
+        if not collab_step:
+            return
+
+        self._log(logging.DEBUG,
+                  "Matching collaboration partners for step {}.".format(age))
+
         pref_lists = {}
         addrs = self.get_agents(addr=True)
         tasks = create_tasks(slave_task, addrs, flatten=False)
@@ -826,7 +856,6 @@ class CollabEnvironment(StatEnvironment):
             if addr is None:
                 print("HÄLÄRM!!! {} did not find a collaboration partner!!"
                       .format(agent))
-
             else:
                 if collab_step:
                     self._log(logging.DEBUG,
@@ -858,19 +887,20 @@ class CollabEnvironment(StatEnvironment):
 
     def analyse_arts_inform(self, agent, aest, own_arts, collab_arts):
         loa = len(own_arts['eval'])
+        meval = 0
+        mnovelty = 0
+        mvalue = 0
         if loa > 0:
             meval = np.mean(own_arts['eval'])
             mnovelty = np.mean(own_arts['nov'])
             mvalue = np.mean(own_arts['val'])
-            self._log(logging.INFO,
-                      "{} {} own: e={:.3f} n={:.3f} v={:.3f} ({:.3f})"
-                      .format(agent, aest, meval, mnovelty, mvalue, own_arts['mval'][-1]))
 
-        mfound = 0.0
-        mceval = 0.0
-        mcnovelty = 0.0
-        mcvalue = 0.0
+        mfound = 0
+        mceval = 0
+        mcnovelty = 0
+        mcvalue = 0
         coa = len(collab_arts['fb'])
+        cfound = 0
         if coa > 0 and np.sum(collab_arts['fb']) > 0:
             for i in range(len(collab_arts['eval'])):
                 if collab_arts['fb'][i]:
@@ -885,14 +915,13 @@ class CollabEnvironment(StatEnvironment):
                 mcnovelty /= mfound
                 mcvalue /= mfound
                 mfound /= coa
-                self._log(logging.INFO,
-                          "{} {} collab: fb={:.3f}, e={:.3f} n={:.3f} v={:.3f}"
-                          .format(agent, aest, mfound, mceval, mcnovelty, mcvalue))
-                self._log(logging.INFO,
-                          "{} {} ratio (ind/col): arts={:.3f} ({}/{}) e={:.3f} n={:.3f} v={:.3f}"
-                          .format(agent, aest, loa/cfound, loa, cfound, meval/mceval, mnovelty/mcnovelty, mvalue/mcvalue))
-            else:
-                self._log(logging.INFO, "{} collab: fb=0".format(agent))
+
+        self._log(logging.INFO, "{} {} (ind/col): arts={}/{} fb={:.3f} "
+                  "e={:.3f}/{:.3f} ({:.3f}) n={:.3f}/{:.3f} ({:.3f}) "
+                  "v={:.3f}/{:.3f} ({:.3f})".format(
+            agent, aest, loa, cfound, mfound, meval, mceval, meval/mceval,
+            mnovelty, mcnovelty, mnovelty/mcnovelty, mvalue, mcvalue,
+            mvalue/mcvalue))
 
     def analyse_all(self):
         async def slave_task(addr):
@@ -914,6 +943,8 @@ class CollabEnvironment(StatEnvironment):
     def collect_evaluations(self):
         """Collect evaluations from all agents for all artifacts made in the
         previous step.
+
+        Send the evaluations to their creators afterwards.
         """
         async def slave_task(addr):
             r_agent = await self.connect(addr, timeout=5)
@@ -925,19 +956,32 @@ class CollabEnvironment(StatEnvironment):
             ret = await r_agent.show_artifact(artifact)
             return addr, ret
 
+        async def slave_task3(addr, aid, evaluations):
+            r_agent = await self.connect(addr, timeout=5)
+            ret = await r_agent.rcv_evaluations_from_artifact(aid, evaluations)
+            return addr, ret
+
         eval_dict = self.collab_evals if self.age % 2 == 0 else self.ind_evals
 
         addrs = self.get_agents(addr=True)
         tasks = create_tasks(slave_task, addrs, flatten=False)
         rets = run(tasks)
+        random.shuffle(rets)
 
+        eval_tasks = []
         for r in rets:
             if r[1] is not None:
                 tasks = create_tasks(slave_task2, addrs, r[1], flatten=False)
-                rets = run(tasks)
-                eval_dict[r[1].aid] = {ret[0]: ret[1] for ret in rets}
+                rets2 = run(tasks)
+                d = {ret[0]: ret[1] for ret in rets2}
+                eval_dict[r[1].aid] = d
                 eval_dict[r[1].aid]['creator'] = r[1].creator
+                for addr in csplit(r[1].creator):
+                    t = asyncio.ensure_future(slave_task3(addr, r[1].aid, d))
+                    eval_tasks.append(t)
+        ret = run(asyncio.gather(*eval_tasks))
         # print(eval_dict)
+        return
 
     def save_artifact_info(self):
         async def slave_task(addr):

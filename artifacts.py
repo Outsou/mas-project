@@ -99,7 +99,7 @@ class GeneticImageArtifact(Artifact):
 
     @staticmethod
     def save_artifact(artifact, folder, aid, pset, color_map,
-                      shape=(400, 400)):
+                      shape=(400, 400), create_color=False):
         """
         Saves an artifact as .png.
         :param artifact:
@@ -119,15 +119,18 @@ class GeneticImageArtifact(Artifact):
             return
         func = gp.compile(individual, pset)
         img = GeneticImageArtifact.generate_image(func, shape)
+        color_img = None
         if len(img.shape) == 2:
-            color_img = color_map[img]
+            if create_color:
+                color_img = color_map[img]
         else:
             color_img = img
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         #print(color_img.shape, np.min(color_img), np.max(color_img))
         bname = "art{}".format(aid)
-        imname = '{}.png'.format(bname)
-        misc.imsave(os.path.join(folder, imname), color_img)
+        if color_img is not None:
+            imname = '{}.png'.format(bname)
+            misc.imsave(os.path.join(folder, imname), color_img)
         imname = 'bw_{}.png'.format(bname)
         misc.imsave(os.path.join(folder, imname), img)
 
