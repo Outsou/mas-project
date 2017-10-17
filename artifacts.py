@@ -217,6 +217,23 @@ class GeneticImageArtifact(Artifact):
         return np.uint8(img)
 
     @staticmethod
+    def individual_to_artifact(individual, agent, shape):
+        if individual.image is None:
+            # If tree is too tall return negative evaluation
+            try:
+                func = gp.compile(individual, individual.pset)
+            except MemoryError:
+                return None
+            func_str = str(individual)
+            image = GeneticImageArtifact.generate_image(func, shape, func_str)
+            individual.image = image
+
+        # Convert deap individual to creamas artifact for evaluation
+        artifact = GeneticImageArtifact(agent, individual.image, individual,
+                                        str(individual))
+        return artifact
+
+    @staticmethod
     def evaluate(individual, agent, shape):
         """Evaluates a deap individual.
 
@@ -229,19 +246,11 @@ class GeneticImageArtifact(Artifact):
         :return:
             The evaluation.
         """
-        if individual.image is None:
-            # If tree is too tall return negative evaluation
-            try:
-                func = gp.compile(individual, individual.pset)
-            except MemoryError:
-                return -1,
-            func_str = str(individual)
-            image = GeneticImageArtifact.generate_image(func, shape, func_str)
-            individual.image = image
+        artifact = GeneticImageArtifact.individual_to_artifact(individual, agent, shape)
 
-        # Convert deap individual to creamas artifact for evaluation
-        artifact = GeneticImageArtifact(agent, individual.image, individual,
-                                        str(individual))
+        if artifact is None:
+            return -1,
+
         return agent.evaluate(artifact)
 
     @staticmethod

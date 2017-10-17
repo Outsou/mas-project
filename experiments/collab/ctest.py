@@ -108,6 +108,7 @@ if __name__ == "__main__":
     params['agents'] = args.agents
     params['novelty_weight'] = args.novelty
     params['num_of_steps'] = args.steps
+    params['model'] = 'rl'
     learning_model = args.model
     base_path = os.path.join(".", args.save_folder)
     os.makedirs(base_path, exist_ok=True)
