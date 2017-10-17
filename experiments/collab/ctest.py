@@ -7,6 +7,7 @@ import copy
 import socket
 import argparse
 import os
+import traceback
 
 import aiomas
 import numpy as np
@@ -97,6 +98,8 @@ if __name__ == "__main__":
                         default="runs")
     parser.add_argument('-r', metavar='run ID', type=int, dest='run_id',
                         help="Run ID, if needed to set manually.", required=False)
+    parser.add_argument('-d', metavar='number of runs', type=int, dest='n_runs',
+                        help="Number of individual runs to be done", default=1)
 
     args = parser.parse_args()
 
@@ -109,23 +112,37 @@ if __name__ == "__main__":
     base_path = os.path.join(".", args.save_folder)
     os.makedirs(base_path, exist_ok=True)
     log_folder = 'foo'
-    run_id = args.run_id if args.run_id is not None else get_run_id(base_path)
+    number_of_runs = args.n_runs
+    finished_runs = 0
+    try_runs = 0
+    print("{} preparing for {} runs.".format(HOST, number_of_runs))
 
-    # CREATE SIMULATION AND RUN
-    run_folder = 'r{:0>4}m{}a{}e{}i{}'.format(
-        run_id, learning_model, params['agents'], len(params['aesthetic_list']),
-        params['num_of_steps'])
-    if len(base_path) > 0:
-        run_folder = os.path.join(base_path, run_folder)
-        log_folder = run_folder
+    while finished_runs < number_of_runs and try_runs < number_of_runs * 2:
+        try_runs += 1
+        try:
+            run_id = args.run_id if args.run_id is not None else get_run_id(base_path)
 
-    # Error if the run folder exists for some reason. Should not happen if no
-    # additional folders are spawned (or folders
-    os.makedirs(run_folder, exist_ok=False)
-    print("Initializing run with {} agents, {} aesthetic measures, {} model, "
-          "{} steps.".format(args.agents, len(params['aesthetic_list']),
-                             args.model, args.steps))
-    print("Saving run output to {}".format(run_folder))
-    # os.makedirs(log_folder, exist_ok=True)
-    run_sim(params, run_folder, log_folder)
+            # CREATE SIMULATION AND RUN
+            run_folder = 'r{:0>4}m{}a{}e{}i{}'.format(
+                run_id, learning_model, params['agents'], len(params['aesthetic_list']),
+                params['num_of_steps'])
+            if len(base_path) > 0:
+                run_folder = os.path.join(base_path, run_folder)
+                log_folder = run_folder
+
+            # Error if the run folder exists for some reason. Should not happen if no
+            # additional folders are spawned (or folders
+            os.makedirs(run_folder, exist_ok=False)
+            print("Initializing run with {} agents, {} aesthetic measures, {} model, "
+                  "{} steps.".format(args.agents, len(params['aesthetic_list']),
+                                     args.model, args.steps))
+            print("Saving run output to {}".format(run_folder))
+            run_sim(params, run_folder, log_folder)
+            finished_runs += 1
+        except:
+            # Something bad happened during the run!
+            with open('COLLAB_RUN_ERRORS.txt', 'a') as f:
+                f.write("HOST: {}\n\n\{}".format(HOST, traceback.format_exc()))
+
+
 
