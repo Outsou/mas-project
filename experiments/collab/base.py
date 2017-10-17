@@ -288,6 +288,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                             'ceval': [],        # Collab's overall evaluation
                             'cmval': [],        # Collab's current max val
                             'cnval': [],        # Collab's normalized val
+                            'cneval': [],       # Collab's normalized evaluation
                             'age': []}          # Own age
 
         # Evaluations of collaborated artifacts by all the agents: key is aid
@@ -367,8 +368,8 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         self.collab_arts['age'].append(self.age)
         self.collab_arts['fb'].append(fb)
         if fb:
+            # Own stuff
             fr = artifact.framings[self.name]
-            cfr = artifact.framings[self.caddr]
             self.collab_arts['aid'].append(artifact.aid)
             self.collab_arts['val'].append(fr['value'])
             self.collab_arts['nov'].append(fr['novelty'])
@@ -376,9 +377,12 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             self.collab_arts['mval'].append(fr['max_value'])
             self.collab_arts['nval'].append(fr['norm_value'])
             self.collab_arts['neval'].append(fr['norm_evaluation'])
+            # Collaborators stuff
+            cfr = artifact.framings[self.caddr]
             self.collab_arts['cval'].append(cfr['value'])
             self.collab_arts['cnov'].append(cfr['novelty'])
             self.collab_arts['ceval'].append(artifact.evals[self.caddr])
+            self.collab_arts['cneval'].append(cfr['norm_evaluation'])
             self.collab_arts['cmval'].append(cfr['max_value'])
             self.collab_arts['cnval'].append(cfr['norm_value'])
 

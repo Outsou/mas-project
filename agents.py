@@ -695,6 +695,7 @@ class GPImageAgent(FeatureAgent):
                       'pass_value': False,
                       'max_value': self.max_value,
                       'norm_value': 0.0,
+                      'norm_evaluation': 0.0,
                       'aesthetic': self.aesthetic
                       }
                 artifact.add_eval(self, evaluation, fr)
