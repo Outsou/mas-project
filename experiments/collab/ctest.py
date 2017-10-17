@@ -7,6 +7,7 @@ import copy
 import socket
 import argparse
 import os
+import traceback
 
 import aiomas
 import numpy as np
@@ -55,28 +56,35 @@ def run_sim(params, save_path, log_folder):
                            callback=menv.post_cbk,
                            log_folder=log_folder)
 
-    # RUN SIMULATION
-    step_times = []
-    for i in range(num_of_steps):
-        step_start = time.monotonic()
-        sim.async_step()
-        step_time = time.monotonic() - step_start
-        step_times.append(step_time)
-        mean_step_time = np.mean(step_times)
-        run_end_time = time.ctime(time.time() +
-                                  (mean_step_time * (num_of_steps - (i + 1))))
-        print('Step {}/{} finished in {:.3f} seconds. Estimated end time at: {}'
-              .format((i + 1), num_of_steps, step_time, run_end_time))
-        with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
-            f.write('{}: Step {}/{}, estimated end time {}.\n'
-                    .format(time.ctime(time.time()), i + 1, num_of_steps,
-                            run_end_time))
+    try:
+        # RUN SIMULATION
+        step_times = []
+        for i in range(num_of_steps):
+            step_start = time.monotonic()
+            sim.async_step()
+            step_time = time.monotonic() - step_start
+            step_times.append(step_time)
+            mean_step_time = np.mean(step_times)
+            run_end_time = time.ctime(time.time() +
+                                      (mean_step_time * (num_of_steps - (i + 1))))
+            print('Step {}/{} finished in {:.3f} seconds. Estimated end time at: {}'
+                  .format((i + 1), num_of_steps, step_time, run_end_time))
+            with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
+                f.write('{}: Step {}/{}, estimated end time {}.\n'
+                        .format(time.ctime(time.time()), i + 1, num_of_steps,
+                                run_end_time))
 
-    rets = menv.save_artifact_info()
-    sim.end()
-    with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
-        f.write('Run finished at {}\n'.format(time.ctime(time.time())))
-    return rets
+        rets = menv.save_artifact_info()
+        sim.end()
+        with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
+            f.write('Run finished at {}\n'.format(time.ctime(time.time())))
+    except:
+        sim.end()
+        # Something bad happened during the run!
+        with open('COLLAB_RUN_ERRORS.txt', 'a') as f:
+            f.write("HOST: {}\n\n\{}".format(HOST, traceback.format_exc()))
+        return False
+    return True
 
 if __name__ == "__main__":
     # Command line argument parsing
@@ -97,6 +105,8 @@ if __name__ == "__main__":
                         default="runs")
     parser.add_argument('-r', metavar='run ID', type=int, dest='run_id',
                         help="Run ID, if needed to set manually.", required=False)
+    parser.add_argument('-d', metavar='number of runs', type=int, dest='n_runs',
+                        help="Number of individual runs to be done", default=1)
 
     args = parser.parse_args()
 
@@ -105,27 +115,34 @@ if __name__ == "__main__":
     params['agents'] = args.agents
     params['novelty_weight'] = args.novelty
     params['num_of_steps'] = args.steps
-    params['model'] = args.model
+    learning_model = args.model
+    params['model'] = learning_model
     base_path = os.path.join(".", args.save_folder)
     os.makedirs(base_path, exist_ok=True)
     log_folder = 'foo'
-    run_id = args.run_id if args.run_id is not None else get_run_id(base_path)
+    number_of_runs = args.n_runs
+    finished_runs = 0
+    try_runs = 0
+    print("{} preparing for {} run(s).".format(HOST, number_of_runs))
 
-    # CREATE SIMULATION AND RUN
-    run_folder = 'r{:0>4}m{}a{}e{}i{}'.format(
-        run_id, params['model'], params['agents'], len(params['aesthetic_list']),
-        params['num_of_steps'])
-    if len(base_path) > 0:
-        run_folder = os.path.join(base_path, run_folder)
-        log_folder = run_folder
+    while finished_runs < number_of_runs and try_runs < number_of_runs * 2:
+        try_runs += 1
+        run_id = args.run_id if args.run_id is not None else get_run_id(base_path)
 
-    # Error if the run folder exists for some reason. Should not happen if no
-    # additional folders are spawned (or folders
-    os.makedirs(run_folder, exist_ok=False)
-    print("Initializing run with {} agents, {} aesthetic measures, {} model, "
-          "{} steps.".format(args.agents, len(params['aesthetic_list']),
-                             args.model, args.steps))
-    print("Saving run output to {}".format(run_folder))
-    # os.makedirs(log_folder, exist_ok=True)
-    run_sim(params, run_folder, log_folder)
+        # CREATE SIMULATION AND RUN
+        run_folder = 'r{:0>4}m{}a{}e{}i{}'.format(
+            run_id, learning_model, params['agents'], len(params['aesthetic_list']),
+            params['num_of_steps'])
+        if len(base_path) > 0:
+            run_folder = os.path.join(base_path, run_folder)
+            log_folder = run_folder
 
+        # Error if the run folder exists for some reason. Should not happen if no
+        # additional folders are spawned (or folders
+        os.makedirs(run_folder, exist_ok=False)
+        print("Initializing run with {} agents, {} aesthetic measures, {} model, "
+              "{} steps.".format(args.agents, len(params['aesthetic_list']),
+                                 args.model, args.steps))
+        print("Saving run output to {}".format(run_folder))
+        success = run_sim(params, run_folder, log_folder)
+        finished_runs += success

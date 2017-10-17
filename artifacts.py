@@ -221,7 +221,7 @@ class GeneticImageArtifact(Artifact):
         if individual.image is None:
             # If tree is too tall return negative evaluation
             try:
-                func = gp.compile(individual, individual.pset)
+                func = gp.compile(individual, agent.super_pset)
             except MemoryError:
                 return None
             func_str = str(individual)

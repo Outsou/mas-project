@@ -427,10 +427,11 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         and passing it down to other agent after evaluating it.
         """
         #print("{} init collab".format(self.addr))
+        init_pop_size = int(self.pop_size / 2)
         population = GIA.initial_population(self,
                                             self.toolbox,
                                             self.pset,
-                                            self.pop_size,
+                                            init_pop_size,
                                             method='50-50',
                                             mutate_old=True)
         self.evaluate_population(population)
@@ -442,6 +443,10 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         self.collab_hof.update(population)
         self.collab_pop = population
 
+    @aiomas.expose
+    def get_collab_pop(self):
+        return self.pop2arts(self.collab_pop)
+
     async def start_collab(self, max_iter):
         """Start collaboration by passing down initialized collaboration
         population to the collaboration partner and waiting for results.
@@ -450,6 +455,11 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                   "start collab with {} (i={})"
                   .format(self.addr, self.caddr, max_iter))
         r_agent = await self.connect(self.caddr)
+        cagent_init_arts = await r_agent.get_collab_pop()
+        cagent_init_pop = self.arts2pop(cagent_init_arts)
+        self.collab_pop += cagent_init_pop
+        population, i = await self.continue_collab(self.collab_pop, 0)
+        self.collab_pop = population
         i = 1  # start from 1 because 0th was the initial population.
         while i <= max_iter:
             arts = self.pop2arts(self.collab_pop)
@@ -538,10 +548,10 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             pop, hof_arts = self.finish_collab(population)
             ret_arts = self.pop2arts(pop)
             return ret_arts, hof_arts, iter + 1
-        elif iter == 1:
-            pop, iter = await self.collab_first_iter(population, iter)
-            ret_arts = self.pop2arts(pop)
-            return ret_arts, iter
+        # elif iter == 1:
+        #     pop, iter = await self.collab_first_iter(population, iter)
+        #     ret_arts = self.pop2arts(pop)
+        #     return ret_arts, iter
         else:
             pop, iter = await self.continue_collab(population, iter)
             ret_arts = self.pop2arts(pop)
