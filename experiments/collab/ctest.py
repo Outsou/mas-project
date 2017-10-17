@@ -148,5 +148,3 @@ if __name__ == "__main__":
         print("Saving run output to {}".format(run_folder))
         success = run_sim(params, run_folder, log_folder)
         finished_runs += success
-
-
