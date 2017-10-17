@@ -778,6 +778,7 @@ class CollabEnvironment(StatEnvironment):
         if collab_step:
             self._log(logging.DEBUG,
                       "Matching collaboration partners for step {}.".format(age))
+
         pref_lists = {}
         addrs = self.get_agents(addr=True)
         tasks = create_tasks(slave_task, addrs, flatten=False)
@@ -830,19 +831,20 @@ class CollabEnvironment(StatEnvironment):
 
     def analyse_arts_inform(self, agent, aest, own_arts, collab_arts):
         loa = len(own_arts['eval'])
+        meval = 0
+        mnovelty = 0
+        mvalue = 0
         if loa > 0:
             meval = np.mean(own_arts['eval'])
             mnovelty = np.mean(own_arts['nov'])
             mvalue = np.mean(own_arts['val'])
-            self._log(logging.INFO,
-                      "{} {} own: e={:.3f} n={:.3f} v={:.3f} ({:.3f})"
-                      .format(agent, aest, meval, mnovelty, mvalue, own_arts['mval'][-1]))
 
-        mfound = 0.0
-        mceval = 0.0
-        mcnovelty = 0.0
-        mcvalue = 0.0
+        mfound = 0
+        mceval = 0
+        mcnovelty = 0
+        mcvalue = 0
         coa = len(collab_arts['fb'])
+        cfound = 0
         if coa > 0 and np.sum(collab_arts['fb']) > 0:
             for i in range(len(collab_arts['eval'])):
                 if collab_arts['fb'][i]:
@@ -857,14 +859,13 @@ class CollabEnvironment(StatEnvironment):
                 mcnovelty /= mfound
                 mcvalue /= mfound
                 mfound /= coa
-                self._log(logging.INFO,
-                          "{} {} collab: fb={:.3f}, e={:.3f} n={:.3f} v={:.3f}"
-                          .format(agent, aest, mfound, mceval, mcnovelty, mcvalue))
-                self._log(logging.INFO,
-                          "{} {} ratio (ind/col): arts={:.3f} ({}/{}) e={:.3f} n={:.3f} v={:.3f}"
-                          .format(agent, aest, loa/cfound, loa, cfound, meval/mceval, mnovelty/mcnovelty, mvalue/mcvalue))
-            else:
-                self._log(logging.INFO, "{} collab: fb=0".format(agent))
+
+        self._log(logging.INFO, "{} {} (ind/col): arts={}/{} fb={:.3f} "
+                  "e={:.3f}/{:.3f} ({:.3f}) n={:.3f}/{:.3f} ({:.3f}) "
+                  "v={:.3f}/{:.3f} ({:.3f})".format(
+            agent, aest, loa, cfound, mfound, meval, mceval, meval/mceval,
+            mnovelty, mcnovelty, mnovelty/mcnovelty, mvalue, mcvalue,
+            mvalue/mcvalue))
 
     def analyse_all(self):
         async def slave_task(addr):
