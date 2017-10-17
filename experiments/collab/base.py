@@ -265,6 +265,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                          'aid': [],             # Image ID
                          'mval': [],            # Current max own value
                          'nval': [],            # Normalized own value
+                         'neval': [],           # Normalized own evaluation
                          'age': []}             # Own age
 
         # Evaluations of own artifacts by all the agents: key is aid
@@ -279,6 +280,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                             'val': [],          # Own value
                             'mval': [],         # Current max val
                             'nval': [],         # Normalized own value
+                            'neval': [],        # Normalized own evaluation
                             'nov': [],          # Own novelty
                             'eval': [],         # Own overall evaluation
                             'cval': [],         # Collab's value (non-norm.)
@@ -314,10 +316,10 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             partners = list(self.connections.keys())
             random.shuffle(partners)
 
-        if self.collab_model == 'Q':
+        if self.collab_model in ['Q0', 'Q1', 'Q2' 'Q3']:
             partners = self.learner.bandit_choose(get_list=True)
 
-        if self.collab_model == 'rl':
+        if self.collab_model == 'lr':
             feats = []
             for ind in self.collab_pop:
                 art = self.artifact_cls.individual_to_artifact(ind, self, self.create_kwargs['shape'])
@@ -350,6 +352,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         self.own_arts['aid'].append(artifact.aid)
         self.own_arts['mval'].append(fr['max_value'])
         self.own_arts['nval'].append(fr['norm_value'])
+        self.own_arts['neval'].append(fr['norm_evaluation'])
         self.own_arts['age'].append(self.age)
 
     def add_own_evals(self, aid, evals):
@@ -372,6 +375,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             self.collab_arts['eval'].append(artifact.evals[self.name])
             self.collab_arts['mval'].append(fr['max_value'])
             self.collab_arts['nval'].append(fr['norm_value'])
+            self.collab_arts['neval'].append(fr['norm_evaluation'])
             self.collab_arts['cval'].append(cfr['value'])
             self.collab_arts['cnov'].append(cfr['novelty'])
             self.collab_arts['ceval'].append(artifact.evals[self.caddr])
@@ -685,11 +689,34 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         """
         # Do not learn artifact again if it has been shown already.
         if self.name in artifact.framings:
-            if self.collab_model == 'Q':
-                self.learner.updadate_bandit(artifact.evals[self.name], self.caddr)
+            if self.caddr is not None:
+                if self.collab_model == 'Q1':
+                    self.learner.update_bandit(artifact.evals[self.name], self.caddr)
+
+                if self.collab_model == 'Q0':
+                    own_framings = artifact.framings[self.addr]
+                    self_passed = own_framings['pass_novelty'] and own_framings['pass_value']
+                    caddr_framings = artifact.framings[self.caddr]
+                    caddr_passed = caddr_framings['pass_novelty'] and caddr_framings['pass_value']
+                    if self_passed and caddr_passed:
+                        self.learner.update_bandit(1, self.caddr)
+                    else:
+                        self.learner.update_bandit(0, self.caddr)
+
             return artifact.evals[self.name], artifact.framings[self.name]
 
+        if self.collab_model == 'lr':
+            creators = artifact.creator.split(' - ')
+            feats = self.get_features(artifact)
+            for creator in creators:
+                eval = artifact.framings[creator]['norm_evaluation']
+                self.learner.update_linear_regression(eval, creator, feats)
+
         e, fr = self.evaluate(artifact)
+
+        if self.collab_model == 'Q2':
+            self.learner.update_bandit(e, artifact.creator)
+
         # Fixed threshold here.
         if fr['novelty'] > 0.2:
             self._log(logging.INFO,
@@ -698,7 +725,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         return e, fr
 
     @aiomas.expose
-    def rcv_evaluations_from_artifact(self, aid, evaluations):
+    def rcv_evaluations_from_artifact(self, artifact, evaluations):
         """LEARN MODEL HERE IF NEEDED.
 
         :param str aid: Artifact ID
@@ -707,8 +734,24 @@ class GPCollaborationAgent(CollaborationBaseAgent):
            Keys are addresses and values are evaluation, framing pairs.
         """
         self._log(logging.INFO,
-                  "Got evals from {}: {}".format(aid, evaluations))
+                  "Got evals from {}: {}".format(artifact.aid, evaluations))
         if self.collab_model == 'random':
+            return
+
+        addrs = list(evaluations.keys())
+        addrs.remove('creator')
+        addrs.remove(self.addr)
+
+        if self.collab_model == 'Q3':
+            for addr in addrs:
+                self.learner.update_bandit(evaluations[addr][1]['norm_evaluation'], addr)
+            return
+
+        if self.collab_model == 'lr':
+            for addr in addrs:
+                self.learner.update_linear_regression(evaluations[addr][1]['norm_evaluation'],
+                                                      addr,
+                                                      self.get_features(artifact))
             return
 
 
@@ -956,9 +999,9 @@ class CollabEnvironment(StatEnvironment):
             ret = await r_agent.show_artifact(artifact)
             return addr, ret
 
-        async def slave_task3(addr, aid, evaluations):
+        async def slave_task3(addr, artifact, evaluations):
             r_agent = await self.connect(addr, timeout=5)
-            ret = await r_agent.rcv_evaluations_from_artifact(aid, evaluations)
+            ret = await r_agent.rcv_evaluations_from_artifact(artifact, evaluations)
             return addr, ret
 
         eval_dict = self.collab_evals if self.age % 2 == 0 else self.ind_evals
@@ -977,7 +1020,7 @@ class CollabEnvironment(StatEnvironment):
                 eval_dict[r[1].aid] = d
                 eval_dict[r[1].aid]['creator'] = r[1].creator
                 for addr in csplit(r[1].creator):
-                    t = asyncio.ensure_future(slave_task3(addr, r[1].aid, d))
+                    t = asyncio.ensure_future(slave_task3(addr, r[1], d))
                     eval_tasks.append(t)
         ret = run(asyncio.gather(*eval_tasks))
         # print(eval_dict)

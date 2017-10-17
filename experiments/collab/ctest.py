@@ -105,8 +105,7 @@ if __name__ == "__main__":
     params['agents'] = args.agents
     params['novelty_weight'] = args.novelty
     params['num_of_steps'] = args.steps
-    params['model'] = 'rl'
-    learning_model = args.model
+    params['model'] = args.model
     base_path = os.path.join(".", args.save_folder)
     os.makedirs(base_path, exist_ok=True)
     log_folder = 'foo'
@@ -114,7 +113,7 @@ if __name__ == "__main__":
 
     # CREATE SIMULATION AND RUN
     run_folder = 'r{:0>4}m{}a{}e{}i{}'.format(
-        run_id, learning_model, params['agents'], len(params['aesthetic_list']),
+        run_id, params['model'], params['agents'], len(params['aesthetic_list']),
         params['num_of_steps'])
     if len(base_path) > 0:
         run_folder = os.path.join(base_path, run_folder)

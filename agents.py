@@ -709,12 +709,16 @@ class GPImageAgent(FeatureAgent):
         if self.max_value < value:
             self.max_value = value
 
+        norm_value = value / self.max_value
+        normalized_evaluation = (1.0 - self.novelty_weight) * norm_value + self.novelty_weight * novelty
+
         fr = {'value': value,
               'novelty': novelty,
               'pass_novelty': bool(novelty >= self._novelty_threshold) if novelty is not None else False,
               'pass_value': bool(value >= self._value_threshold),
               'max_value': self.max_value,
-              'norm_value': value / self.max_value,
+              'norm_value': norm_value,
+              'norm_evaluation': normalized_evaluation,
               'aesthetic': self.aesthetic
               }
         artifact.add_eval(self, evaluation, fr)
