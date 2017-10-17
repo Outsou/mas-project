@@ -175,9 +175,6 @@ class CollaborationBaseAgent(GPImageAgent):
         if self.collab_model == 'random':
             partners = list(self.connections.keys())
             random.shuffle(partners)
-        # TODO: ADD Q-LEARNING ETC. MODELS HERE
-        if self.collab_model == 'Q':
-            partners = self.learner.bandit_choose(get_list=True)
         return self.addr, partners
 
     @aiomas.expose
@@ -287,6 +284,39 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         # values are dicts
         self.collab_evals = {}
         self.save_general_info()
+
+    def get_features(self, artifact):
+        """Return objective values for features without mapping.
+        """
+        features = []
+        for rule in self.R:
+            features.append(rule.feat(artifact))
+        return features
+
+    @aiomas.expose
+    async def get_collab_prefs(self):
+        """Return a list of possible collaboration partners sorted in their
+        preference order.
+
+        This list is used to choose collaboration partners in
+        :meth:`CollabEnvironment.match_collab_partners`.
+        """
+        self.init_collab()
+        if self.collab_model == 'random':
+            partners = list(self.connections.keys())
+            random.shuffle(partners)
+
+        if self.collab_model == 'Q':
+            partners = self.learner.bandit_choose(get_list=True)
+
+        if self.collab_model == 'rl':
+            feats = []
+            for ind in self.collab_pop:
+                art = self.artifact_cls.individual_to_artifact(ind, self, self.create_kwargs['shape'])
+                feats.append(self.get_features(art))
+            partners = self.learner.linear_choose_multi(feats)
+
+        return self.addr, partners
 
     @aiomas.expose
     def get_aesthetic(self):
@@ -553,7 +583,6 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         if not self.cinit:
             return
 
-        self.init_collab()
         best, ranking = await self.start_collab(self.collab_iters)
 
         if best is not None:
@@ -564,9 +593,6 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
             #print("Chose best image with ranking {}".format(ranking))
             e, fr = self.evaluate(best)
-
-            if self.collab_model == 'Q':
-                self.learner.update_bandit(e, self.caddr)
 
             #print("Evals: {}".format(best.evals))
             #print("Framings: {}".format(best.framings))
@@ -651,6 +677,8 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         """
         # Do not learn artifact again if it has been shown already.
         if self.name in artifact.framings:
+            if self.collab_model == 'Q':
+                self.learner.updadate_bandit(artifact.evals[self.name], self.caddr)
             return artifact.evals[self.name], artifact.framings[self.name]
 
         e, fr = self.evaluate(artifact)

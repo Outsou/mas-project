@@ -208,6 +208,13 @@ class MultiLearner():
         return best_addr
 
     def linear_choose(self, features):
+        """Choose a connection with the linear regression model.
+
+        :param features:
+            List of features of the artifact.
+        :return:
+            The chosen connection's address.
+        """
         if np.random.random() < self.e:
             return np.random.choice(list(self.linear_weights.keys()))
 
@@ -223,3 +230,30 @@ class MultiLearner():
                 best_addr = addr
 
         return best_addr
+
+    def linear_choose_multi(self, artifacts):
+        """Returns a list of addresses in order of highest to lowest average evaluation of the artifacts.
+
+        :param artifacts:
+            List containing feature lists of the artifacts.
+        :return:
+            List of addresses.
+        """
+        addrs = list(self.linear_weights.keys())
+
+        if np.random.random() < self.e:
+            np.random.shuffle(addrs)
+            return addrs
+
+        estimate_dict = {}
+        for addr in addrs:
+            estimate_dict[addr] = 0
+
+        for artifact in artifacts:
+            feature_vec = np.append(artifact, 1)
+            for addr in estimate_dict.keys():
+                estimate_dict[addr] += np.sum(self.linear_weights[addr] * feature_vec)
+
+        sorted_addrs, _ = zip(*sorted(estimate_dict.items(), key=itemgetter(1), reverse=True))
+        return sorted_addrs
+
