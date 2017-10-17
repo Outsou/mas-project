@@ -701,9 +701,10 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
         e, fr = self.evaluate(artifact)
         # Fixed threshold here.
-        if fr['novelty'] > 0.2:
+        if fr['novelty'] > 0.4 and fr['norm_value'] > 0.5:
             self._log(logging.INFO,
-                      "Learning (n={}): {}".format(fr['novelty'], artifact.aid))
+                      "Learning (nov={}, nval={}): {}"
+                      .format(fr['novelty'], fr['norm_value'], artifact.aid))
             self.learn(artifact)
         return e, fr
 

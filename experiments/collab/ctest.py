@@ -83,6 +83,8 @@ def run_sim(params, save_path, log_folder):
         # Something bad happened during the run!
         with open('COLLAB_RUN_ERRORS.txt', 'a') as f:
             f.write("HOST: {}\n\n\{}".format(HOST, traceback.format_exc()))
+        with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
+            f.write("\n\n{}\n\n".format(traceback.format_exc()))
         return False
     return True
 
