@@ -71,8 +71,8 @@ def run_sim(params, save_path, log_folder):
             print('Step {}/{} finished in {:.3f} seconds. Estimated end time at: {}'
                   .format((i + 1), num_of_steps, step_time, run_end_time))
             with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
-                f.write('{}: Step {}/{}, estimated end time {}.\n'
-                        .format(time.ctime(time.time()), i + 1, num_of_steps,
+                f.write('({}) {}: Step {}/{}, estimated end time {}.\n'
+                        .format(HOST, time.ctime(time.time()), i + 1, num_of_steps,
                                 run_end_time))
 
         rets = menv.save_artifact_info()
