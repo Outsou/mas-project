@@ -6,6 +6,7 @@ import random
 import copy
 import socket
 import argparse
+from argparse import RawTextHelpFormatter
 import os
 import traceback
 
@@ -91,13 +92,24 @@ def run_sim(params, save_path, log_folder):
 if __name__ == "__main__":
     # Command line argument parsing
     desc = "Command line script to run collaboration test runs."
-    parser = argparse.ArgumentParser(description=desc)
+    parser = argparse.ArgumentParser(description=desc, formatter_class=RawTextHelpFormatter)
     parser.add_argument('-a', metavar='agents', type=int, dest='agents',
                         help="Number of agents.", default=20)
     parser.add_argument('-s', metavar='steps', type=int, dest='steps',
                         help="Number of simulation steps.", default=200)
     parser.add_argument('-m', metavar='model', type=str, dest='model',
-                        help="Learning model to be used.", default='random')
+                        default='random',
+                        help="Learning model to be used.\n"
+                             "Q0: Gets reward 1 if both agents in collaboration passed the artifact, 0 otherwise. "
+                             "How often collaboration succeeds? \n"
+                             "Q1: Reward is the evaluation the agent gives to the artifact created in collaboration. "
+                             "How much do I gain from collaboration personally?\n"
+                             "Q2: Reward is own evaluation of artifact created by another agent. Learns only from "
+                             "artifacts created by a single agent. Who creates artifacts that are interesting to me?\n"
+                             "Q3: Reward is own artifact's evaluation by another agent. Who likes my artifacts?\n"
+                             "lr: Trains a linear regression model for each neighbour based on both evaluations of "
+                             "own artifacts by the neighbour and the neighbour's evaluations of its own artifacts."
+                             "Who would like the artifacts in this initial population I have created?")
     parser.add_argument('-n', metavar='novelty', type=int, dest='novelty',
                         help="Novelty weight.", default=0.5)
     parser.add_argument('-l', metavar='folder', type=str, dest='save_folder',
