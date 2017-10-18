@@ -316,7 +316,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             partners = list(self.connections.keys())
             random.shuffle(partners)
 
-        if self.collab_model in ['Q0', 'Q1', 'Q2' 'Q3']:
+        if self.collab_model in ['Q0', 'Q1', 'Q2', 'Q3']:
             partners = self.learner.bandit_choose(get_list=True)
 
         if self.collab_model == 'lr':
@@ -725,7 +725,8 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         e, fr = self.evaluate(artifact)
 
         if self.collab_model == 'Q2':
-            self.learner.update_bandit(e, artifact.creator)
+            if len(artifact.creator.split(' - ')) == 1:
+                self.learner.update_bandit(e, artifact.creator)
 
         # Fixed threshold here.
         if fr['novelty'] > 0.2:
@@ -758,10 +759,11 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             return
 
         if self.collab_model == 'lr':
+            feats = self.get_features(artifact)
             for addr in addrs:
                 self.learner.update_linear_regression(evaluations[addr][1]['norm_evaluation'],
                                                       addr,
-                                                      self.get_features(artifact))
+                                                      feats)
             return
 
 
