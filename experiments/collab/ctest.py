@@ -100,6 +100,7 @@ if __name__ == "__main__":
     parser.add_argument('-m', metavar='model', type=str, dest='model',
                         default='random',
                         help="Learning model to be used.\n"
+                             "random: no learning, collaboration are chosen randomly\n"
                              "Q0: Gets reward 1 if both agents in collaboration passed the artifact, 0 otherwise. "
                              "How often collaboration succeeds? \n"
                              "Q1: Reward is the evaluation the agent gives to the artifact created in collaboration. "
