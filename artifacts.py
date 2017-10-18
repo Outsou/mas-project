@@ -73,6 +73,7 @@ class GeneticImageArtifact(Artifact):
         self.png_compression_done = False
         # Artifact ID #
         self.aid = None
+        self.rank = None
 
     @staticmethod
     def artifact_from_file(fname, pset):

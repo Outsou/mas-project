@@ -32,7 +32,7 @@ def filter(hof, epsilon=0.02):
         passed = True
         for f, r in filtered:
             err = rmse(obj, f.obj)
-            if err < epsilon:
+            if err <= epsilon:
                 #print("Filtered an image with rmse={}".format(err))
                 passed = False
                 break
@@ -41,6 +41,10 @@ def filter(hof, epsilon=0.02):
             filtered.append((hof[i][0], i + 1))
     #print("{} artifacts passed filtering.".format(len(filtered)))
     return filtered
+
+
+def rank(hof):
+    return [(hof[i][0], i + 1) for i in range(len(hof) )]
 
 
 def match(fl1, fl2, epsilon=0.02):
@@ -58,7 +62,7 @@ def match(fl1, fl2, epsilon=0.02):
         obj1 = a1.obj
         for a2, rank2 in fl2:
             obj2 = a2.obj
-            if rmse(obj1, obj2) < epsilon:
+            if rmse(obj1, obj2) <= epsilon:
                 matched.append((a1, a2, rank1 + rank2))
                 # Always choose the best single match for an artifact
                 break
@@ -67,17 +71,19 @@ def match(fl1, fl2, epsilon=0.02):
     return matched
 
 
-def choose_best(hof1, hof2, epsilon=0.02):
+def choose_best(hof1, hof2, epsilon=0.00):
     """Choose single best artifact from two ordered lists of artifacts using
     sum of ranks as the key.
 
     Lists are first filtered and then matched against each other.
     """
-    fl1 = filter(hof1, epsilon)
-    fl2 = filter(hof2, epsilon)
+    #fl1 = filter(hof1, epsilon)
+    #fl2 = filter(hof2, epsilon)
+    fl1 = rank(hof1)
+    fl2 = rank(hof2)
     matches = match(fl1, fl2, epsilon)
     a1, a2 = fl1[0][0].creator, fl2[0][0].creator
-    #print("{} and {} matched {} artifacts.".format(a1, a2, len(matches)))
+    print("{} and {} matched {} artifacts.".format(a1, a2, len(matches)))
     if len(matches) == 0 or matches is None:
         return None, None
     return random.choice((matches[0][0], matches[0][1])), matches[0][2]

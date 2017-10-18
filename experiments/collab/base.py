@@ -276,6 +276,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                             'cinit': [],        # Initiator?
                             'fb': [],           # Found artifact?
                             'caest': [],        # Collab. aesthetic
+                            'rank': [],
                             'aid': [],          # Image ID
                             'val': [],          # Own value
                             'mval': [],         # Current max val
@@ -371,6 +372,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             # Own stuff
             fr = artifact.framings[self.name]
             self.collab_arts['aid'].append(artifact.aid)
+            self.collab_arts['rank'].append(artifact.rank)
             self.collab_arts['val'].append(fr['value'])
             self.collab_arts['nov'].append(fr['novelty'])
             self.collab_arts['eval'].append(artifact.evals[self.name])
@@ -615,7 +617,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             # Change creator name so that it does not come up in memory when
             # creating new individual populations
             best._creator = "{} - {}".format(self.addr, self.caddr)
-
+            best.rank = ranking
 
             #print("Chose best image with ranking {}".format(ranking))
             e, fr = self.evaluate(best)
@@ -631,8 +633,9 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             caest = await r_agent.get_aesthetic()
 
             self._log(logging.INFO,
-                      'Collaborated with {} ({}). E={} [V:{} ({}) N:{}]'
-                      .format(self.caddr, caest, e, v, mv, n))
+                      '({}) collab with {} ({}) rank={}. E={} [V:{} ({}) N:{}]'
+                      .format(self.aesthetic.upper(), self.caddr, caest.upper(),
+                              ranking, e, v, mv, n))
             #self.add_artifact(best)
 
             aid = get_aid(self.addr, self.age, self.aesthetic, v, n, self.caddr, caest)
