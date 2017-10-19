@@ -572,6 +572,8 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         and as agents are altruistic, this agent accepts it as it is.
         """
         if artifact is None:
+            if self.collab_model in ['Q0', 'Q1']:
+                self.learner.update_bandit(0, self.caddr)
             self.append_coa(False, aesthetic, None)
             return None
 
@@ -652,6 +654,9 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             self.append_coa(True, caest, art)
             self.last_artifact = art
         else:
+            if self.collab_model in ['Q0', 'Q1']:
+                self.learner.update_bandit(0, self.caddr)
+
             r_agent = await self.connect(self.caddr)
             r_aesthetic = await r_agent.get_aesthetic()
             ret = await r_agent.rcv_collab_artifact(None, self.aesthetic)
@@ -711,14 +716,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                     self.learner.update_bandit(artifact.evals[self.name], self.caddr)
 
                 if self.collab_model == 'Q0':
-                    own_framings = artifact.framings[self.addr]
-                    self_passed = own_framings['pass_novelty'] and own_framings['pass_value']
-                    caddr_framings = artifact.framings[self.caddr]
-                    caddr_passed = caddr_framings['pass_novelty'] and caddr_framings['pass_value']
-                    if self_passed and caddr_passed:
                         self.learner.update_bandit(1, self.caddr)
-                    else:
-                        self.learner.update_bandit(0, self.caddr)
 
             return artifact.evals[self.name], artifact.framings[self.name]
 
