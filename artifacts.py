@@ -274,7 +274,8 @@ class GeneticImageArtifact(Artifact):
 
     @staticmethod
     def evolve_population(population, generations, toolbox, pset, hall_of_fame,
-                          cxpb=0.75, mutpb=0.25, injected_inds=[]):
+                          cxpb=0.75, mutpb=0.25, injected_inds=[],
+                          use_selection_on_first=True):
         """
         Evolves a population of individuals. Applies elitist (k=1) in addition
         to toolbox's selection strategy to the individuals.
@@ -296,12 +297,15 @@ class GeneticImageArtifact(Artifact):
         hall_of_fame.update(population)
 
         for g in range(generations):
-            # Select the next generation individuals with elitist (k=1) and
-            # toolboxes selection method
-            offspring = tools.selBest(population, 1)
-            offspring += toolbox.select(population, pop_len - 1)
-            # Clone the selected individuals
-            offspring = list(map(toolbox.clone, offspring))
+            if not use_selection_on_first and g == 0:
+                offspring = list(map(toolbox.clone, population))
+            else:
+                # Select the next generation individuals with elitist (k=1) and
+                # toolboxes selection method
+                offspring = tools.selBest(population, 1)
+                offspring += toolbox.select(population, pop_len - 1)
+                # Clone the selected individuals
+                offspring = list(map(toolbox.clone, offspring))
 
             # Apply crossover and mutation on the offspring
 

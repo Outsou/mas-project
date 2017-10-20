@@ -690,7 +690,7 @@ class GPImageAgent(FeatureAgent):
             artifact.png_compression_done = True
             if png_ratio < 0.08:
                 fr = {'value': value,
-                      'novelty': novelty,
+                      'novelty': 0.0,
                       'pass_novelty': False,
                       'pass_value': False,
                       'max_value': self.max_value,
