@@ -6,7 +6,7 @@ import pickle
 import numpy as np
 import re
 from experiments.collab.chk_runs import get_last_lines
-
+from tabulate import tabulate
 
 def _average_arrays(stats, shape, key, sub_key=None):
     avg = np.zeros(shape)
@@ -376,14 +376,39 @@ def analyze_collab_evals(dirs):
     agents = int(re.findall(r'a\d+', first_dir)[0][1:])
     collab_attempts = agents / 2 * collab_iters * len(dirs)
 
+    first_choice_vals = {'eval': [],
+                         'val': [],
+                         'nov': []}
     collab_successes = 0
     for dir in dirs:
-        pkl = os.path.join(dir, pickle_name)
-        pkl_dict = pickle.load(open(pkl, 'rb'))
-        keys = pkl_dict.keys()
+        collab_evals_pkl = os.path.join(dir, pickle_name)
+        collab_evals = pickle.load(open(collab_evals_pkl, 'rb'))
+        pref_lists_pkl = os.path.join(dir, 'pref_lists.pkl')
+        pref_lists = pickle.load(open(pref_lists_pkl, 'rb'))
+        keys = collab_evals.keys()
         collab_successes += len(keys)
 
+        for key in keys:
+            step = int(key[:5])
+            collab_step = int(step / 2 - 1)
+            creators = collab_evals[key]['creator'].split(' - ')
+            creator1_first = pref_lists[creators[0]][collab_step][0]
+            creator2_first = pref_lists[creators[1]][collab_step][0]
+
+            if creator1_first == creators[1]:
+                first_choice_vals['eval'].append(collab_evals[key][creators[0]][0])
+                first_choice_vals['val'].append(collab_evals[key][creators[0]][1]['value'])
+                first_choice_vals['nov'].append(collab_evals[key][creators[0]][1]['novelty'])
+            if creator2_first == creators[0]:
+                first_choice_vals['eval'].append(collab_evals[key][creators[1]][0])
+                first_choice_vals['val'].append(collab_evals[key][creators[1]][1]['value'])
+                first_choice_vals['nov'].append(collab_evals[key][creators[1]][1]['novelty'])
+
     collab_eval_stats['success_ratio'] = collab_successes / collab_attempts
+
+    collab_eval_stats['first_choice_eval'] = sum(first_choice_vals['eval']) / len(first_choice_vals['eval'])
+    collab_eval_stats['first_choice_val'] = sum(first_choice_vals['val']) / len(first_choice_vals['val'])
+    collab_eval_stats['first_choice_nov'] = sum(first_choice_vals['nov']) / len(first_choice_vals['nov'])
 
     return collab_eval_stats
 
@@ -421,7 +446,7 @@ def analyze_own_arts(dirs):
     own_art_stats = common_agent_analysis(dirs, 'own_arts.pkl')
     return own_art_stats
 
-def analyze_collab_gp_runs(path):
+def analyze_model_dir(path):
     # Get directories of valid runs
     dirs = []
     lines = get_last_lines(path)
@@ -429,35 +454,58 @@ def analyze_collab_gp_runs(path):
         if 'Run finished' in line:
             dirs.append(line.split(': ')[0])
 
-    # dirs = get_dirs_in_dir(path)
     collab_eval_stats = analyze_collab_evals(dirs)
     collab_art_stats = analyze_collab_arts(dirs)
     own_art_stats = analyze_own_arts(dirs)
     ind_eval_stats = analyze_ind_evals(dirs)
 
-    table = [
-        ['Collaboration success ratio:', str(collab_eval_stats['success_ratio'])],
-        [],
-        ['Average evaluation of own collab artifacts:', str(collab_art_stats['avg_eval'])],
-        ['Average evaluation of own solo artifacts:', str(own_art_stats['avg_eval'])],
-        [],
-        ['Average value of own collab artifacts:', str(collab_art_stats['avg_val'])],
-        ['Average value of own solo artifacts:', str(own_art_stats['avg_val'])],
-        [],
-        ['Average novelty of own collab artifacts:', str(collab_art_stats['avg_nov'])],
-        ['Average novelty of own solo artifacts:', str(own_art_stats['avg_nov'])],
-        [],
-        ['Average overall evaluation of collab artifacts:', str(collab_eval_stats['avg_eval'])],
-        ['Average overall evaluation of solo artifacts:', str(ind_eval_stats['avg_eval'])],
-        [],
-        ['Average overall value of collab artifacts:', str(collab_eval_stats['avg_val'])],
-        ['Average overall value of solo artifacts:', str(ind_eval_stats['avg_val'])],
-        [],
-        ['Average overall novelty of collab artifacts:', str(collab_eval_stats['avg_nov'])],
-        ['Average overall novelty of solo artifacts:', str(ind_eval_stats['avg_nov'])]
-    ]
+    return collab_eval_stats, collab_art_stats, own_art_stats, ind_eval_stats
 
-    col_width = max(len(word) for row in table for word in row) + 2
-    for row in table:
-        print(''.join(word.ljust(col_width) for word in row))
 
+def analyze_collab_gp_runs(path):
+    model_dirs = sorted(get_dirs_in_dir(path))
+
+    rows = [['Collaboration success ratio'],
+            ['Evaluation of own collab artifacts'],
+            ['Evaluation of own solo artifacts'],
+            ['Value of own collab artifacts'],
+            ['Value of own solo artifacts'],
+            ['Novelty of own collab artifacts'],
+            ['Novelty of own solo artifacts'],
+            ['Overall evaluation of collab artifacts'],
+            ['Overall evaluation of solo artifacts'],
+            ['Overall value of collab artifacts'],
+            ['Overall value of solo artifacts'],
+            ['Overall novelty of collab artifacts'],
+            ['Overall novelty of solo artifacts'],
+            ['First choice collab evaluation'],
+            ['First choice collab value'],
+            ['First choice collab novelty']]
+
+    models = ['']
+
+    for model_dir in model_dirs:
+        models.append(os.path.split(model_dir)[1])
+        collab_eval_stats, collab_art_stats, own_art_stats, ind_eval_stats = analyze_model_dir(model_dir)
+
+        col_vals = [collab_eval_stats['success_ratio'],
+                    collab_art_stats['avg_eval'],
+                    own_art_stats['avg_eval'],
+                    collab_art_stats['avg_val'],
+                    own_art_stats['avg_val'],
+                    collab_art_stats['avg_nov'],
+                    own_art_stats['avg_nov'],
+                    collab_eval_stats['avg_eval'],
+                    ind_eval_stats['avg_eval'],
+                    collab_eval_stats['avg_val'],
+                    ind_eval_stats['avg_val'],
+                    collab_eval_stats['avg_nov'],
+                    ind_eval_stats['avg_nov'],
+                    collab_eval_stats['first_choice_eval'],
+                    collab_eval_stats['first_choice_val'],
+                    collab_eval_stats['first_choice_nov']]
+
+        for i in range(len(rows)):
+            rows[i].append(col_vals[i])
+
+    print(tabulate(rows, headers=models))
