@@ -5,6 +5,7 @@ import os
 import pickle
 import numpy as np
 import re
+from experiments.collab.chk_runs import get_last_lines
 
 
 def _average_arrays(stats, shape, key, sub_key=None):
@@ -421,7 +422,14 @@ def analyze_own_arts(dirs):
     return own_art_stats
 
 def analyze_collab_gp_runs(path):
-    dirs = get_dirs_in_dir(path)
+    # Get directories of valid runs
+    dirs = []
+    lines = get_last_lines(path)
+    for line in lines:
+        if 'Run finished' in line:
+            dirs.append(line.split(': ')[0])
+
+    # dirs = get_dirs_in_dir(path)
     collab_eval_stats = analyze_collab_evals(dirs)
     collab_art_stats = analyze_collab_arts(dirs)
     own_art_stats = analyze_own_arts(dirs)
