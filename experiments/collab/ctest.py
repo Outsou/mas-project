@@ -74,18 +74,20 @@ def run_sim(params, save_path, log_folder):
                 f.write('({}) {}: Step {}/{}, estimated end time {}.\n'
                         .format(HOST, time.ctime(time.time()), i + 1, num_of_steps,
                                 run_end_time))
-
         rets = menv.save_artifact_info()
         sim.end()
         with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
-            f.write('Run finished at {}\n'.format(time.ctime(time.time())))
+            f.write('({}) Run finished at {}\n'
+                    .format(HOST, time.ctime(time.time())))
     except:
         sim.end()
         # Something bad happened during the run!
         with open('COLLAB_RUN_ERRORS.txt', 'a') as f:
             f.write("HOST: {}\n\n\{}".format(HOST, traceback.format_exc()))
         with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
-            f.write("\n\n{}\n\n".format(traceback.format_exc()))
+            f.write("\n\n{}\n".format(traceback.format_exc()))
+            f.write("({}) RUN CRASHED (Step {}/{})"
+                    .format(HOST, i + 1, num_of_steps, time.ctime(time.time())))
         return False
     return True
 
@@ -132,7 +134,7 @@ if __name__ == "__main__":
     params['num_of_steps'] = args.steps
     learning_model = args.model
     params['model'] = learning_model
-    base_path = os.path.join(".", args.save_folder)
+    base_path = os.path.join(".", args.save_folder, learning_model)
     os.makedirs(base_path, exist_ok=True)
     log_folder = 'foo'
     number_of_runs = args.n_runs
