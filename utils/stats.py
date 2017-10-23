@@ -376,11 +376,13 @@ def analyze_collab_evals(dirs):
     agents = int(re.findall(r'a\d+', first_dir)[0][1:])
     collab_attempts = agents / 2 * collab_iters * len(dirs)
 
+    aesthetic_pair_vals = {}
     first_choice_vals = {'eval': [],
                          'val': [],
                          'nov': []}
     collab_successes = 0
     for dir in dirs:
+        # Load pickles
         collab_evals_pkl = os.path.join(dir, pickle_name)
         collab_evals = pickle.load(open(collab_evals_pkl, 'rb'))
         pref_lists_pkl = os.path.join(dir, 'pref_lists.pkl')
@@ -392,6 +394,25 @@ def analyze_collab_evals(dirs):
             step = int(key[:5])
             collab_step = int(step / 2 - 1)
             creators = collab_evals[key]['creator'].split(' - ')
+
+            # Calculate averages for aesthetic pairs
+            pair = []
+            for creator in creators:
+                pair.append(collab_evals[key][creator][1]['aesthetic'])
+            pair.sort()
+            pair = tuple(pair)
+            if pair not in aesthetic_pair_vals:
+                aesthetic_pair_vals[pair] = {'eval': [],
+                                             'val': [],
+                                             'nov': [],
+                                             'count': 0}
+            for creator in creators:
+                aesthetic_pair_vals[pair]['eval'].append(collab_evals[key][creator][0])
+                aesthetic_pair_vals[pair]['val'].append(collab_evals[key][creator][1]['value'])
+                aesthetic_pair_vals[pair]['nov'].append(collab_evals[key][creator][1]['novelty'])
+            aesthetic_pair_vals[pair]['count'] += 1
+
+            # Get values when collaboration partner was first choice
             creator1_first = pref_lists[creators[0]][collab_step][0]
             creator2_first = pref_lists[creators[1]][collab_step][0]
 
@@ -405,6 +426,13 @@ def analyze_collab_evals(dirs):
                 first_choice_vals['nov'].append(collab_evals[key][creators[1]][1]['novelty'])
 
     collab_eval_stats['success_ratio'] = collab_successes / collab_attempts
+
+    collab_eval_stats['aesthetic_pairs'] = {}
+    for pair, vals in aesthetic_pair_vals.items():
+        collab_eval_stats['aesthetic_pairs'][pair] = {'eval': sum(vals['eval']) / len(vals['eval']),
+                                                      'val': sum(vals['val']) / len(vals['val']),
+                                                      'nov': sum(vals['nov']) / len(vals['nov']),
+                                                      'count': vals['count']}
 
     collab_eval_stats['first_choice_eval'] = sum(first_choice_vals['eval']) / len(first_choice_vals['eval'])
     collab_eval_stats['first_choice_val'] = sum(first_choice_vals['val']) / len(first_choice_vals['val'])
@@ -488,6 +516,7 @@ def analyze_collab_gp_runs(path):
         models.append(os.path.split(model_dir)[1])
         collab_eval_stats, collab_art_stats, own_art_stats, ind_eval_stats = analyze_model_dir(model_dir)
 
+        # Add column to main table
         col_vals = [collab_eval_stats['success_ratio'],
                     collab_art_stats['avg_eval'],
                     own_art_stats['avg_eval'],
@@ -507,5 +536,18 @@ def analyze_collab_gp_runs(path):
 
         for i in range(len(rows)):
             rows[i].append(col_vals[i])
+
+        # Create and print aesthetic pair table
+        aesthetic_rows = []
+        pairs = list(collab_eval_stats['aesthetic_pairs'].keys())
+        for pair in sorted(pairs):
+            aesthetic_rows.append(['{}, {}'.format(pair[0], pair[1]),
+                                  collab_eval_stats['aesthetic_pairs'][pair]['eval'],
+                                  collab_eval_stats['aesthetic_pairs'][pair]['val'],
+                                  collab_eval_stats['aesthetic_pairs'][pair]['nov'],
+                                  collab_eval_stats['aesthetic_pairs'][pair]['count']])
+
+        print(tabulate(aesthetic_rows, headers=[models[-1], 'evaluation', 'value', 'novelty', 'count']))
+        print()
 
     print(tabulate(rows, headers=models))
