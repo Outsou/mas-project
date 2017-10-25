@@ -84,3 +84,5 @@ testing/
 tests/
 screenlog.*
 *.pkl
+runs_old/
+*.tar.gz
