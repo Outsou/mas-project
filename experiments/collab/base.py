@@ -778,7 +778,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         :param dict evaluations:
            Keys are addresses and values are evaluation, framing pairs.
         """
-        self._log(logging.INFO,
+        self._log(logging.DEBUG,
                   "Got evals from {}".format(artifact.aid))
         if self.collab_model == 'random':
             return
@@ -787,6 +787,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         addrs.remove('creator')
         addrs.remove(self.addr)
 
+        # TODO: These learn now also from collaborated artifacts?
         if self.collab_model == 'Q3':
             for addr in addrs:
                 self.learner.update_bandit(evaluations[addr][1]['norm_evaluation'], addr)
