@@ -788,7 +788,8 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         addrs.remove(self.addr)
 
         # TODO: These learn now also from collaborated artifacts?
-        if self.collab_model == 'Q3':
+        if self.collab_model == 'Q3' and artifact.creator == self.addr:
+            #self._log(logging.INFO, "Jep!!! {}".format(artifact.creator))
             for addr in addrs:
                 self.learner.update_bandit(evaluations[addr][1]['norm_evaluation'], addr)
             return
