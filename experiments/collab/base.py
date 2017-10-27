@@ -137,8 +137,13 @@ class CollaborationBaseAgent(GPImageAgent):
         rets = super().add_connections(conns)
 
         # Initialize the multi-model learner
-        self.learner = MultiLearner(list(self.connections),
-                                    len(self.R))
+        if self.collab_model in ['Q2', 'Q3', 'lr']:
+            self.learner = MultiLearner(list(self.connections),
+                                        len(self.R),
+                                        e=0)
+        else:
+            self.learner = MultiLearner(list(self.connections),
+                                        len(self.R))
 
         return rets
 

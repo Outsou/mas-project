@@ -1,6 +1,5 @@
 import itertools
 import operator
-import matplotlib.pyplot as plt
 import os
 import pickle
 import numpy as np
@@ -9,8 +8,8 @@ from experiments.collab.chk_runs import get_last_lines
 from tabulate import tabulate
 import scipy.stats as st
 import matplotlib.pyplot as plt
-import pandas as pd
-from pandas.tools.plotting import table
+import seaborn as sns
+from pandas.plotting import table
 import pandas as pd
 
 
@@ -371,6 +370,13 @@ def common_society_analysis(dirs, pickle_name):
 
     return stat_dict
 
+def collab_success_per_step(collab_eval_keys, collab_steps):
+    successes = np.zeros(collab_steps)
+    for key in collab_eval_keys:
+        step = int(key[:5])
+        idx = int(step / 2 - 1)
+        successes[idx] += 1
+    return successes
 
 def analyze_collab_evals(dirs):
     pickle_name = 'collab_evals.pkl'
@@ -378,7 +384,7 @@ def analyze_collab_evals(dirs):
 
     # Get number of collab attempts
     first_dir = os.path.split(dirs[0])[1]
-    collab_iters = int(re.findall(r'i\d+', first_dir)[0][1:]) / 2
+    collab_iters = int(int(re.findall(r'i\d+', first_dir)[0][1:]) / 2)
     agents = int(re.findall(r'a\d+', first_dir)[0][1:])
 
     collab_attempts = agents / 2 * collab_iters
@@ -389,6 +395,7 @@ def analyze_collab_evals(dirs):
                          'val': [],
                          'nov': []}
     collab_successes = 0
+    step_successes = np.zeros(collab_iters)
     for dir in dirs:
         # Load pickles
         collab_evals_pkl = os.path.join(dir, pickle_name)
@@ -396,6 +403,9 @@ def analyze_collab_evals(dirs):
         pref_lists_pkl = os.path.join(dir, 'pref_lists.pkl')
         pref_lists = pickle.load(open(pref_lists_pkl, 'rb'))
         collab_arts = collab_evals.keys()
+
+        # Calculate per step successes
+        step_successes += collab_success_per_step(list(collab_evals.keys()), collab_iters)
 
         for collab_art in collab_arts:
             step = int(collab_art[:5])
@@ -450,6 +460,10 @@ def analyze_collab_evals(dirs):
     collab_eval_stats['first_choice_eval'] = sum(first_choice_vals['eval']) / len(first_choice_vals['eval'])
     collab_eval_stats['first_choice_val'] = sum(first_choice_vals['val']) / len(first_choice_vals['val'])
     collab_eval_stats['first_choice_nov'] = sum(first_choice_vals['nov']) / len(first_choice_vals['nov'])
+
+    collab_eval_stats['step_successes'] = step_successes / len(dirs)
+
+    collab_eval_stats['num_of_agents'] = agents
 
     return collab_eval_stats
 
@@ -561,7 +575,7 @@ def analyze_model_dir(path):
 
     return collab_eval_stats, collab_art_stats, own_art_stats, ind_eval_stats
 
-def make_table_image(mat, row_name, col_names, file_name, size=(12,4)):
+def make_table_image(mat, row_name, col_names, filename, size=(12, 4)):
     df = pd.DataFrame(mat, index=row_name, columns=col_names)
     fig, ax = plt.subplots(figsize=size)  # set size frame
     ax.xaxis.set_visible(False)  # hide the x axis
@@ -571,11 +585,33 @@ def make_table_image(mat, row_name, col_names, file_name, size=(12,4)):
     tabla.auto_set_font_size(False)  # Activate set fontsize manually
     tabla.set_fontsize(12)  # if ++fontsize is necessary ++colWidths
     tabla.scale(1.2, 1.2)  # change size table
-    plt.savefig(file_name, transparent=True)
+    plt.savefig(filename, transparent=True)
+    plt.close()
+
+def get_cumulative_success_ratio(successes, step_attempts):
+    # Calculate cumulative ratios
+    cum_ratios = []
+    for i in range(len(successes)):
+        attempts = step_attempts * (i + 1)
+        cum_ratios.append(sum(successes[:i+1]) / attempts)
+    return cum_ratios
+
+def make_success_ratio_plot(ratio_dict, filename):
+    for model, ratios in sorted(ratio_dict.items()):
+        steps = len(ratios) * 2
+        plt.plot(list(range(2, steps + 1, 2)), ratios, label=model)
+    plt.xlabel('step')
+    plt.ylabel('success ratio')
+    plt.legend()
+    plt.savefig(filename)
+    plt.close()
 
 
-def analyze_collab_gp_runs(path):
+
+def analyze_collab_gp_runs(path, decimals=3):
+    sns.set(color_codes=True)
     model_dirs = sorted(get_dirs_in_dir(path))
+    format_s = '%.{}f'.format(decimals)
 
     rows = [['Collaboration success ratio'],
             ['Success ratio conf int'],
@@ -596,15 +632,19 @@ def analyze_collab_gp_runs(path):
             ['First choice collab novelty']]
 
     models = ['']
+    cumulative_successes = {}
+    step_success_ratios = {}
 
     for model_dir in model_dirs:
         model = os.path.split(model_dir)[1]
         models.append(model)
         collab_eval_stats, collab_art_stats, own_art_stats, ind_eval_stats = analyze_model_dir(model_dir)
 
+        conf_int = collab_eval_stats['success_ratio']['conf_int']
+        conf_int = (format_s % conf_int[0], format_s % conf_int[1])
         # Add column to main table
         col_vals = [collab_eval_stats['success_ratio']['mean'],
-                    collab_eval_stats['success_ratio']['conf_int'],
+                    (conf_int),
                     collab_art_stats['avg_eval'],
                     own_art_stats['avg_eval'],
                     collab_art_stats['avg_val'],
@@ -622,22 +662,26 @@ def analyze_collab_gp_runs(path):
                     collab_eval_stats['first_choice_nov']]
 
         for i in range(len(rows)):
+            col_vals = [format_s % val if type(val) in [float, np.float64] else val for val in col_vals]
             rows[i].append(col_vals[i])
 
         # Create and print aesthetic pair table
         aesthetic_pair_rows = []
         pairs = list(collab_eval_stats['aesthetic_pairs'].keys())
-        for pair in sorted(pairs):
+        pairs.sort()
+        for pair in pairs:
             total  = collab_art_stats['aesthetic_pairs'][pair]['succeeded'] \
                      + collab_art_stats['aesthetic_pairs'][pair]['failed']
             success_ratio = collab_art_stats['aesthetic_pairs'][pair]['succeeded'] / total
-            aesthetic_pair_rows.append(['{}, {}'.format(pair[0], pair[1]),
-                                   collab_eval_stats['aesthetic_pairs'][pair]['eval'],
-                                   collab_eval_stats['aesthetic_pairs'][pair]['val'],
-                                   collab_eval_stats['aesthetic_pairs'][pair]['nov'],
-                                   collab_eval_stats['aesthetic_pairs'][pair]['count'],
-                                   success_ratio,
-                                   collab_art_stats['aesthetic_pairs'][pair]['rank']])
+            row_vals = ['{}, {}'.format(pair[0], pair[1]),
+                        collab_eval_stats['aesthetic_pairs'][pair]['eval'],
+                        collab_eval_stats['aesthetic_pairs'][pair]['val'],
+                        collab_eval_stats['aesthetic_pairs'][pair]['nov'],
+                        collab_eval_stats['aesthetic_pairs'][pair]['count'],
+                        success_ratio,
+                        collab_art_stats['aesthetic_pairs'][pair]['rank']]
+            row_vals = [format_s % val if type(val) is float else val for val in row_vals]
+            aesthetic_pair_rows.append(row_vals)
 
         print(tabulate(aesthetic_pair_rows,
                        headers=[models[-1], 'evaluation', 'value', 'novelty', 'count', 'success ratio', 'mean rank']))
@@ -645,21 +689,32 @@ def analyze_collab_gp_runs(path):
 
         table = np.array(aesthetic_pair_rows)[:, -3:]
         table = np.array(table, dtype=float)
-        make_table_image(np.round(table, 2), pairs, ['count', 'success ratio', 'mean rank'], '{}_aest_pairs.jpg'.format(model))
+        make_table_image(np.round(table, 2), pairs, ['count', 'success ratio', 'mean rank'], '{}_aest_pairs.png'.format(model))
+
+        cumulative_successes[model] = get_cumulative_success_ratio(collab_eval_stats['step_successes'], collab_eval_stats['num_of_agents'] / 2)
+        step_success_ratios[model] = collab_eval_stats['step_successes'] / (collab_eval_stats['num_of_agents'] / 2)
 
         # Create and print aesthetic stats
         aesthetic_rows = []
         aesthetics = list(collab_art_stats['aesthetic'].keys())
         for aest in sorted(aesthetics):
             for caest in sorted(collab_art_stats['aesthetic'][aest].keys()):
-                aesthetic_rows.append([aest,
-                                       caest,
-                                       collab_art_stats['aesthetic'][aest][caest]['eval'],
-                                       collab_art_stats['aesthetic'][aest][caest]['val'],
-                                       collab_art_stats['aesthetic'][aest][caest]['nov']])
+                row = [aest,
+                       caest,
+                       collab_art_stats['aesthetic'][aest][caest]['eval'],
+                       collab_art_stats['aesthetic'][aest][caest]['val'],
+                       collab_art_stats['aesthetic'][aest][caest]['nov']]
+                row = []
+                aesthetic_rows.append(format_s % val if type(val) is float else val for val in row)
 
         print(tabulate(aesthetic_rows,
                        headers=['aesthetic', 'collab aesthetic', 'evaluation', 'value', 'novelty']))
         print()
 
     print(tabulate(rows, headers=models))
+
+    # Make cumulative success ratio plot
+    make_success_ratio_plot(cumulative_successes, 'cumulative_success_ratios.png')
+
+    # Make non-cumulative success ratio plot
+    make_success_ratio_plot(step_success_ratios, 'success_ratios.png')
