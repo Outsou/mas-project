@@ -370,6 +370,7 @@ def common_society_analysis(dirs, pickle_name):
 
     return stat_dict
 
+
 def collab_success_per_step(collab_eval_keys, collab_steps):
     successes = np.zeros(collab_steps)
     for key in collab_eval_keys:
@@ -377,6 +378,77 @@ def collab_success_per_step(collab_eval_keys, collab_steps):
         idx = int(step / 2 - 1)
         successes[idx] += 1
     return successes
+
+
+def get_step_top_values(collab_evals, pref_lists, collab_steps):
+    """Makes a dictionary where values are listed for each step for collab artifacts in collab_evals."""
+    top_k = [1, 3, 5]
+
+    top = {'all': {'eval': [[] for x in range(collab_steps)],
+                   'val': [[] for x in range(collab_steps)],
+                   'nov': [[] for x in range(collab_steps)]}}
+
+    for k in top_k:
+        top[str(k)] = {'eval': [[] for x in range(collab_steps)],
+                       'val': [[] for x in range(collab_steps)],
+                       'nov': [[] for x in range(collab_steps)]}
+
+    for collab_art, stats in collab_evals.items():
+        step = int(collab_art[:5])
+        idx = int(step / 2 - 1)
+        creators = stats['creator'].split(' - ')
+
+        for creator in creators:
+            other = [agent for agent in creators if agent != creator][0]
+            eval = collab_evals[collab_art][creator][0]
+            val = collab_evals[collab_art][creator][1]['value']
+            nov = collab_evals[collab_art][creator][1]['novelty']
+            pref_list = pref_lists[creator][idx]
+
+            for k in top_k:
+                if other in pref_list[:k]:
+                    top[str(k)]['eval'][idx].append(eval)
+                    top[str(k)]['val'][idx].append(val)
+                    top[str(k)]['nov'][idx].append(nov)
+
+            top['all']['eval'][idx].append(eval)
+            top['all']['val'][idx].append(val)
+            top['all']['nov'][idx].append(nov)
+    return top
+
+
+def append_top_dictionaries(dict1, dict2):
+    """Appends top pick stat dictionaries."""
+    if len(list(dict1.keys())) == 0:
+        return dict2
+
+    res_dict = {}
+    for key in dict1.keys():
+        res_dict[key] = {}
+        for sub_key in dict1[key].keys():
+            res_dict[key][sub_key] = []
+            for i in range(len(dict1[key][sub_key])):
+                res_dict[key][sub_key].append(dict1[key][sub_key][i] + dict2[key][sub_key][i])
+    return res_dict
+
+
+def calculate_top_dict_means(top_dict):
+    """Calculates stepwise means and overall means."""
+    res_dict = {}
+    for key in top_dict.keys():
+        res_dict[key] = {}
+        for sub_key, val_list in top_dict[key].items():
+            res_dict[key][sub_key] = []
+            all = []
+            for i in range(len(top_dict[key][sub_key])):
+                if len(top_dict[key][sub_key][i]) == 0:
+                    res_dict[key][sub_key].append(None)
+                else:
+                    res_dict[key][sub_key].append(np.mean(top_dict[key][sub_key][i]))
+                all += top_dict[key][sub_key][i]
+            res_dict[key][sub_key + '_mean'] = np.mean(all)
+    return res_dict
+
 
 def analyze_collab_evals(dirs):
     pickle_name = 'collab_evals.pkl'
@@ -394,6 +466,7 @@ def analyze_collab_evals(dirs):
     first_choice_vals = {'eval': [],
                          'val': [],
                          'nov': []}
+    top_pick_stats = {}
     collab_successes = 0
     step_successes = np.zeros(collab_iters)
     for dir in dirs:
@@ -406,6 +479,10 @@ def analyze_collab_evals(dirs):
 
         # Calculate per step successes
         step_successes += collab_success_per_step(list(collab_evals.keys()), collab_iters)
+
+        # Calculate per step top pick values
+        top_pick_stats = append_top_dictionaries(top_pick_stats,
+                                                 get_step_top_values(collab_evals, pref_lists, collab_iters))
 
         for collab_art in collab_arts:
             step = int(collab_art[:5])
@@ -429,19 +506,6 @@ def analyze_collab_evals(dirs):
                 aesthetic_pair_vals[pair]['nov'].append(collab_evals[collab_art][creator][1]['novelty'])
             aesthetic_pair_vals[pair]['count'] += 1
 
-            # Get values when collaboration partner was first choice
-            creator1_first = pref_lists[creators[0]][collab_step][0]
-            creator2_first = pref_lists[creators[1]][collab_step][0]
-
-            if creator1_first == creators[1]:
-                first_choice_vals['eval'].append(collab_evals[collab_art][creators[0]][0])
-                first_choice_vals['val'].append(collab_evals[collab_art][creators[0]][1]['value'])
-                first_choice_vals['nov'].append(collab_evals[collab_art][creators[0]][1]['novelty'])
-            if creator2_first == creators[0]:
-                first_choice_vals['eval'].append(collab_evals[collab_art][creators[1]][0])
-                first_choice_vals['val'].append(collab_evals[collab_art][creators[1]][1]['value'])
-                first_choice_vals['nov'].append(collab_evals[collab_art][creators[1]][1]['novelty'])
-
             # Calculate collab success ratio for simulation run
             collab_ratios.append(len(collab_arts) / collab_attempts)
 
@@ -457,12 +521,10 @@ def analyze_collab_evals(dirs):
                                                       'nov': sum(vals['nov']) / len(vals['nov']),
                                                       'count': vals['count']}
 
-    collab_eval_stats['first_choice_eval'] = sum(first_choice_vals['eval']) / len(first_choice_vals['eval'])
-    collab_eval_stats['first_choice_val'] = sum(first_choice_vals['val']) / len(first_choice_vals['val'])
-    collab_eval_stats['first_choice_nov'] = sum(first_choice_vals['nov']) / len(first_choice_vals['nov'])
+    top_pick_means = calculate_top_dict_means(top_pick_stats)
 
+    collab_eval_stats['top_pick_stats'] = top_pick_means
     collab_eval_stats['step_successes'] = step_successes / len(dirs)
-
     collab_eval_stats['num_of_agents'] = agents
 
     return collab_eval_stats
@@ -589,7 +651,7 @@ def make_table_image(mat, row_name, col_names, filename, size=(12, 4)):
     plt.close()
 
 def get_cumulative_success_ratio(successes, step_attempts):
-    # Calculate cumulative ratios
+    """Calculates cumulative success ratio."""
     cum_ratios = []
     for i in range(len(successes)):
         attempts = step_attempts * (i + 1)
@@ -597,6 +659,7 @@ def get_cumulative_success_ratio(successes, step_attempts):
     return cum_ratios
 
 def make_success_ratio_plot(ratio_dict, filename):
+    """Creates a success ratio plot."""
     for model, ratios in sorted(ratio_dict.items()):
         steps = len(ratios) * 2
         plt.plot(list(range(2, steps + 1, 2)), ratios, label=model)
@@ -607,8 +670,77 @@ def make_success_ratio_plot(ratio_dict, filename):
     plt.close()
 
 
+def print_aesthetic_table(collab_eval_stats, collab_art_stats, format_s, models):
+    """Creates and prints statistic table for aesthetic pairs."""
+    aesthetic_pair_rows = []
+    pairs = list(collab_eval_stats['aesthetic_pairs'].keys())
+    pairs.sort()
+    for pair in pairs:
+        total = collab_art_stats['aesthetic_pairs'][pair]['succeeded'] \
+                + collab_art_stats['aesthetic_pairs'][pair]['failed']
+        success_ratio = collab_art_stats['aesthetic_pairs'][pair]['succeeded'] / total
+        row_vals = ['{}, {}'.format(pair[0], pair[1]),
+                    collab_eval_stats['aesthetic_pairs'][pair]['eval'],
+                    collab_eval_stats['aesthetic_pairs'][pair]['val'],
+                    collab_eval_stats['aesthetic_pairs'][pair]['nov'],
+                    collab_eval_stats['aesthetic_pairs'][pair]['count'],
+                    success_ratio,
+                    collab_art_stats['aesthetic_pairs'][pair]['rank']]
+        row_vals = [format_s % val if type(val) is float else val for val in row_vals]
+        aesthetic_pair_rows.append(row_vals)
+
+    print(tabulate(aesthetic_pair_rows,
+                   headers=[models[-1], 'evaluation', 'value', 'novelty', 'count', 'success ratio', 'mean rank']))
+    return aesthetic_pair_rows, pairs
+
+
+def print_aesthetic_stats(collab_art_stats, format_s):
+    """Creates and prints aesthetic table from single aesthetics point of view."""
+    aesthetic_rows = []
+    aesthetics = list(collab_art_stats['aesthetic'].keys())
+    for aest in sorted(aesthetics):
+        for caest in sorted(collab_art_stats['aesthetic'][aest].keys()):
+            row = [aest,
+                   caest,
+                   collab_art_stats['aesthetic'][aest][caest]['eval'],
+                   collab_art_stats['aesthetic'][aest][caest]['val'],
+                   collab_art_stats['aesthetic'][aest][caest]['nov']]
+            aesthetic_rows.append([format_s % val if type(val) in [float, np.float64] else val for val in row])
+
+    print(tabulate(aesthetic_rows,
+                   headers=['aesthetic', 'collab aesthetic', 'evaluation', 'value', 'novelty']))
+
+
+def create_top_k_val_nov_plot(top_pick_stats, model):
+    x = list(range(2, len(top_pick_stats['all']['val']) * 2 + 1, 2))
+
+    for val in ['val', 'nov']:
+        for key in sorted(top_pick_stats.keys()):
+            plt.plot(x, top_pick_stats[key][val], label=key)
+        plt.xlabel('step')
+        plt.ylabel(val)
+        plt.legend()
+        plt.ylim(0.4, 0.7)
+        plt.savefig('{}_{}_top_picks.png'.format(model, val))
+        plt.close()
+
+
+def create_val_nov_plot(step_pick_stat_dict):
+    first_key = list(step_pick_stat_dict.keys())[0]
+    x = list(range(2, len(step_pick_stat_dict[first_key]['all']['val']) * 2 + 1, 2))
+    for val in ['val', 'nov']:
+        for model in sorted(step_pick_stat_dict.keys()):
+            plt.plot(x, step_pick_stat_dict[model]['all'][val], label=model)
+        plt.xlabel('step')
+        plt.ylabel(val)
+        plt.legend()
+        plt.ylim(0.4, 0.7)
+        plt.savefig('{}_collab.png'.format(val))
+        plt.close()
+
 
 def analyze_collab_gp_runs(path, decimals=3):
+    """The main function to call when analyzing runs."""
     sns.set(color_codes=True)
     model_dirs = sorted(get_dirs_in_dir(path))
     format_s = '%.{}f'.format(decimals)
@@ -634,6 +766,7 @@ def analyze_collab_gp_runs(path, decimals=3):
     models = ['']
     cumulative_successes = {}
     step_success_ratios = {}
+    step_pick_stat_dict = {}
 
     for model_dir in model_dirs:
         model = os.path.split(model_dir)[1]
@@ -657,60 +790,37 @@ def analyze_collab_gp_runs(path, decimals=3):
                     ind_eval_stats['avg_val'],
                     collab_eval_stats['avg_nov'],
                     ind_eval_stats['avg_nov'],
-                    collab_eval_stats['first_choice_eval'],
-                    collab_eval_stats['first_choice_val'],
-                    collab_eval_stats['first_choice_nov']]
+                    collab_eval_stats['top_pick_stats']['1']['eval_mean'],
+                    collab_eval_stats['top_pick_stats']['1']['val_mean'],
+                    collab_eval_stats['top_pick_stats']['1']['nov_mean']]
 
         for i in range(len(rows)):
             col_vals = [format_s % val if type(val) in [float, np.float64] else val for val in col_vals]
             rows[i].append(col_vals[i])
 
         # Create and print aesthetic pair table
-        aesthetic_pair_rows = []
-        pairs = list(collab_eval_stats['aesthetic_pairs'].keys())
-        pairs.sort()
-        for pair in pairs:
-            total  = collab_art_stats['aesthetic_pairs'][pair]['succeeded'] \
-                     + collab_art_stats['aesthetic_pairs'][pair]['failed']
-            success_ratio = collab_art_stats['aesthetic_pairs'][pair]['succeeded'] / total
-            row_vals = ['{}, {}'.format(pair[0], pair[1]),
-                        collab_eval_stats['aesthetic_pairs'][pair]['eval'],
-                        collab_eval_stats['aesthetic_pairs'][pair]['val'],
-                        collab_eval_stats['aesthetic_pairs'][pair]['nov'],
-                        collab_eval_stats['aesthetic_pairs'][pair]['count'],
-                        success_ratio,
-                        collab_art_stats['aesthetic_pairs'][pair]['rank']]
-            row_vals = [format_s % val if type(val) is float else val for val in row_vals]
-            aesthetic_pair_rows.append(row_vals)
-
-        print(tabulate(aesthetic_pair_rows,
-                       headers=[models[-1], 'evaluation', 'value', 'novelty', 'count', 'success ratio', 'mean rank']))
+        aesthetic_pair_rows, pairs = print_aesthetic_table(collab_eval_stats, collab_art_stats, format_s, models)
         print()
 
+        # Create image of aesthetic pair count, success ratio and mean rank
         table = np.array(aesthetic_pair_rows)[:, -3:]
         table = np.array(table, dtype=float)
         make_table_image(np.round(table, 2), pairs, ['count', 'success ratio', 'mean rank'], '{}_aest_pairs.png'.format(model))
 
+        # Record success ratios
         cumulative_successes[model] = get_cumulative_success_ratio(collab_eval_stats['step_successes'], collab_eval_stats['num_of_agents'] / 2)
         step_success_ratios[model] = collab_eval_stats['step_successes'] / (collab_eval_stats['num_of_agents'] / 2)
 
         # Create and print aesthetic stats
-        aesthetic_rows = []
-        aesthetics = list(collab_art_stats['aesthetic'].keys())
-        for aest in sorted(aesthetics):
-            for caest in sorted(collab_art_stats['aesthetic'][aest].keys()):
-                row = [aest,
-                       caest,
-                       collab_art_stats['aesthetic'][aest][caest]['eval'],
-                       collab_art_stats['aesthetic'][aest][caest]['val'],
-                       collab_art_stats['aesthetic'][aest][caest]['nov']]
-                row = []
-                aesthetic_rows.append(format_s % val if type(val) is float else val for val in row)
-
-        print(tabulate(aesthetic_rows,
-                       headers=['aesthetic', 'collab aesthetic', 'evaluation', 'value', 'novelty']))
+        print_aesthetic_stats(collab_art_stats, format_s)
         print()
 
+        # Create value/novelty plot for this model
+        create_top_k_val_nov_plot(collab_eval_stats['top_pick_stats'], model)
+
+        step_pick_stat_dict[model] = collab_eval_stats['top_pick_stats']
+
+    # Print main table
     print(tabulate(rows, headers=models))
 
     # Make cumulative success ratio plot
@@ -718,3 +828,6 @@ def analyze_collab_gp_runs(path, decimals=3):
 
     # Make non-cumulative success ratio plot
     make_success_ratio_plot(step_success_ratios, 'success_ratios.png')
+
+    # Make value and novelty plots
+    create_val_nov_plot(step_pick_stat_dict)
