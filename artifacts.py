@@ -87,15 +87,18 @@ class GeneticImageArtifact(Artifact):
         return individual
 
     @staticmethod
-    def resave_with_resolution(fname, pset, color_map, shape=(1000, 1000)):
+    def resave_with_resolution(fname, pset, color_map, shape=(1000, 1000), cm_name=""):
         """Resave an individual saved as a string into a file with given
         color mapping and resolution.
         """
         individual = GeneticImageArtifact.artifact_from_file(fname, pset)
         func = gp.compile(individual, pset)
         img = GeneticImageArtifact.generate_image(func, shape)
-        color_img = color_map[img]
-        new_fname = "{}_{}x{}.png".format(fname[:-4], shape[0], shape[1])
+        if color_map is not None:
+            color_img = color_map[img]
+        else:
+            color_img = img
+        new_fname = "{}_{}_{}x{}.png".format(fname[:-4], cm_name, shape[0], shape[1])
         misc.imsave(new_fname, color_img)
 
     @staticmethod
