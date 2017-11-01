@@ -860,6 +860,45 @@ def create_solo_val_nov_plots(step_vals_novs_solo):
         plt.close()
 
 
+def make_aesthetic_rows(collab_eval_stats, own_art_stats, aest_rows, aest_first_choice_rows, eval_ratios, format_s):
+    for aest in collab_eval_stats['aest_top_pick_stats']:
+        if aest not in eval_ratios:
+            eval_ratios[aest] = {'rand': [], 'first': [], 'rand_first': []}
+
+        if aest not in aest_rows:
+            aest_rows[aest] = [['{} own collab eval'.format(aest)],
+                               ['{} own solo eval'.format(aest)],
+                               ['{} own collab val'.format(aest)],
+                               ['{} own solo val'.format(aest)]]
+                                # ['{} own collab nov'.format(aest)],
+                                # ['{} own solo nov'.format(aest)]]
+        own_collab_eval = collab_eval_stats['aest_top_pick_stats'][aest]['all']['eval']
+        col_vals = [own_collab_eval,
+                    own_art_stats['aest_means'][aest]['eval'],
+                    collab_eval_stats['aest_top_pick_stats'][aest]['all']['val'],
+                    own_art_stats['aest_means'][aest]['val']]
+                    # collab_eval_stats['aest_top_pick_stats'][aest]['all']['nov'],
+                    # own_art_stats['aest_means'][aest]['nov']]
+        col_vals = [format_s % val if type(val) in [float, np.float64] else val for val in col_vals]
+        for i in range(len(col_vals)):
+            aest_rows[aest][i].append(col_vals[i])
+
+        if aest not in aest_first_choice_rows:
+            aest_first_choice_rows[aest] = [['{} first choice eval'.format(aest)],
+                                            ['{} first choice val'.format(aest)]]
+                                            # ['{} first choice nov'.format(aest)]]
+        first_choice_eval = collab_eval_stats['aest_top_pick_stats'][aest]['1']['eval']
+        col_vals = [first_choice_eval,
+                    collab_eval_stats['aest_top_pick_stats'][aest]['1']['val']]
+                    # collab_eval_stats['aest_top_pick_stats'][aest]['1']['nov']]
+        col_vals = [format_s % val if type(val) in [float, np.float64] else val for val in col_vals]
+        for i in range(len(col_vals)):
+            aest_first_choice_rows[aest][i].append(col_vals[i])
+
+        eval_ratios[aest]['first'].append(own_collab_eval / first_choice_eval)
+        eval_ratios[aest]['rand'].append(own_collab_eval)
+        eval_ratios[aest]['rand_first'].append(first_choice_eval)
+
 def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     """The main function to call when analyzing runs."""
     sns.set(color_codes=True)
@@ -896,6 +935,7 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     step_success_ratios = {}
     step_pick_stat_dict = {}
     step_vals_novs_solo = {}
+    eval_ratios = {}
 
     for model_dir in model_dirs:
         model = os.path.split(model_dir)[1]
@@ -907,34 +947,7 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         collab_eval_stats, collab_art_stats, own_art_stats, ind_eval_stats = analyze_model_dir(model_dir)
 
         # Generate aesthetic dependant rows
-        for aest in collab_eval_stats['aest_top_pick_stats']:
-            if aest not in aest_rows:
-                aest_rows[aest] = [['{} own collab eval'.format(aest)],
-                                   ['{} own solo eval'.format(aest)],
-                                   ['{} own collab val'.format(aest)],
-                                   ['{} own solo val'.format(aest)]]
-                                   #['{} own collab nov'.format(aest)],
-                                   #['{} own solo nov'.format(aest)]]
-            col_vals = [collab_eval_stats['aest_top_pick_stats'][aest]['all']['eval'],
-                        own_art_stats['aest_means'][aest]['eval'],
-                        collab_eval_stats['aest_top_pick_stats'][aest]['all']['val'],
-                        own_art_stats['aest_means'][aest]['val']]
-                        #collab_eval_stats['aest_top_pick_stats'][aest]['all']['nov'],
-                        #own_art_stats['aest_means'][aest]['nov']]
-            for i in range(len(col_vals)):
-                col_vals = [format_s % val if type(val) in [float, np.float64] else val for val in col_vals]
-                aest_rows[aest][i].append(col_vals[i])
-
-            if aest not in aest_first_choice_rows:
-                aest_first_choice_rows[aest] = [['{} first choice eval'.format(aest)],
-                                                ['{} first choice val'.format(aest)]]
-                                                #['{} first choice nov'.format(aest)]]
-            col_vals = [collab_eval_stats['aest_top_pick_stats'][aest]['1']['eval'],
-                        collab_eval_stats['aest_top_pick_stats'][aest]['1']['val']]
-                        # collab_eval_stats['aest_top_pick_stats'][aest]['1']['nov']]
-            for i in range(len(col_vals)):
-                col_vals = [format_s % val if type(val) in [float, np.float64] else val for val in col_vals]
-                aest_first_choice_rows[aest][i].append(col_vals[i])
+        make_aesthetic_rows(collab_eval_stats, own_art_stats, aest_rows, aest_first_choice_rows, eval_ratios, format_s)
 
         conf_int = collab_eval_stats['success_ratio']['conf_int']
         conf_int = (format_s % conf_int[0], format_s % conf_int[1])
@@ -961,8 +974,8 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
                     collab_eval_stats['top_pick_stats_other']['1']['val_mean']]
                     #collab_eval_stats['top_pick_stats_other']['1']['nov_mean']]
 
+        col_vals = [format_s % val if type(val) in [float, np.float64] else val for val in col_vals]
         for i in range(len(rows)):
-            col_vals = [format_s % val if type(val) in [float, np.float64] else val for val in col_vals]
             rows[i].append(col_vals[i])
 
         # Create and print aesthetic pair table
@@ -972,10 +985,14 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         # Create image of aesthetic pair count, success ratio and mean rank
         table = np.array(aesthetic_pair_rows)[:, -3:]
         table = np.array(table, dtype=float)
-        make_table_image(np.round(table, 2), pairs, ['count', 'success ratio', 'mean rank'], '{}_aest_pairs.png'.format(model))
+        make_table_image(np.round(table, 2),
+                         pairs,
+                         ['count', 'success ratio', 'mean rank'],
+                         '{}_aest_pairs.png'.format(model))
 
         # Record success ratios
-        cumulative_successes[model] = get_cumulative_success_ratio(collab_eval_stats['step_successes'], collab_eval_stats['num_of_agents'] / 2)
+        cumulative_successes[model] = get_cumulative_success_ratio(collab_eval_stats['step_successes'],
+                                                                   collab_eval_stats['num_of_agents'] / 2)
         step_success_ratios[model] = collab_eval_stats['step_successes'] / (collab_eval_stats['num_of_agents'] / 2)
 
         # Create and print aesthetic stats
@@ -991,12 +1008,29 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         step_vals_novs_solo[model]['vals'] = own_art_stats['step_vals']
         step_vals_novs_solo[model]['novs'] = own_art_stats['step_novs']
 
+    # Calculate own collab eval ratios w.r.t random
+    for aest in eval_ratios.keys():
+        eval_ratios[aest]['rand'] = \
+            list(np.array(eval_ratios[aest]['rand']) / eval_ratios[aest]['rand'][-1])
+        eval_ratios[aest]['rand_first'] \
+            = list(np.array(eval_ratios[aest]['rand_first']) / eval_ratios[aest]['rand_first'][-1])
+
     # Print main table
-    for aest in sorted(aest_rows.keys()):
+    sorted_aest = sorted(aest_rows.keys())
+    for aest in sorted_aest:
         for row in aest_rows[aest]:
             rows.append(row)
         for row in aest_first_choice_rows[aest]:
             rows.append(row)
+
+    for ratio in [('own', 'rand'), ('own', 'first'), ('first', 'rand_first')]:
+        nominator = ratio[0]
+        denominator = ratio[1]
+        for aest in sorted_aest:
+            row = ['{} {}/{} '.format(aest, nominator, denominator)] + eval_ratios[aest][denominator]
+            row = [format_s % val if type(val) in [float, np.float64] else val for val in row]
+            rows.append(row)
+
     print(tabulate(rows, headers=models))
 
     # Make cumulative success ratio plot
