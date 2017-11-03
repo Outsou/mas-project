@@ -515,6 +515,7 @@ def analyze_collab_evals(dirs):
     collab_attempts = agents / 2 * collab_iters
     collab_ratios = []
 
+    aesthetic_pair_separate_vals = {}
     aesthetic_pair_vals = {}
     top_pick_stats = {}
     top_pick_stats_other = {}
@@ -556,10 +557,17 @@ def analyze_collab_evals(dirs):
                                              'val': [],
                                              'nov': [],
                                              'count': 0}
+                aesthetic_pair_separate_vals[pair] = {pair[0]: [],
+                                                      pair[1]: []}
+
             for creator in creators:
+                val = collab_evals[collab_art][creator][1]['value']
+                aest = collab_evals[collab_art][creator][1]['aesthetic']
                 aesthetic_pair_vals[pair]['eval'].append(collab_evals[collab_art][creator][0])
-                aesthetic_pair_vals[pair]['val'].append(collab_evals[collab_art][creator][1]['value'])
+                aesthetic_pair_vals[pair]['val'].append(val)
                 aesthetic_pair_vals[pair]['nov'].append(collab_evals[collab_art][creator][1]['novelty'])
+                aesthetic_pair_separate_vals[pair][aest].append(val)
+
             aesthetic_pair_vals[pair]['count'] += 1
 
             # Calculate collab success ratio for simulation run
@@ -576,6 +584,11 @@ def analyze_collab_evals(dirs):
                                                       'val': sum(vals['val']) / len(vals['val']),
                                                       'nov': sum(vals['nov']) / len(vals['nov']),
                                                       'count': vals['count']}
+
+    for pair, aests in aesthetic_pair_separate_vals.items():
+        for aest, vals in aests.items():
+            aesthetic_pair_separate_vals[pair][aest] = np.mean(aesthetic_pair_separate_vals[pair][aest])
+    collab_eval_stats['aest_pair_separate_vals'] = aesthetic_pair_separate_vals
 
     top_pick_means = calculate_top_dict_means(top_pick_stats)
     aesthetic_top_pick_means = calculate_aest_top_means(aesthetic_top_stats)
@@ -594,7 +607,46 @@ def analyze_collab_evals(dirs):
 
 
 def analyze_ind_evals(dirs):
-    ind_eval_stats = common_society_analysis(dirs, 'ind_evals.pkl')
+    pickle_name = 'ind_evals.pkl'
+    ind_eval_stats = common_society_analysis(dirs, pickle_name)
+
+    agents = None
+    aest_agents = {}
+
+    aest_vals = {}
+
+    for dir in dirs:
+        pkl = os.path.join(dir, pickle_name)
+        ind_evals = pickle.load(open(pkl, 'rb'))
+        for art in ind_evals.keys():
+            # Create agent list and a dictionary with an agent for each aesthetic
+            if agents is None:
+                agents = list(ind_evals[art].keys())
+                agents.remove('creator')
+                aest_agents = {}
+                for agent in agents:
+                    agent_aest = ind_evals[art][agent][1]['aesthetic']
+                    if agent_aest not in aest_agents:
+                        aest_agents[agent_aest] = agent
+
+            # Get val for each aesthetic
+            creator = ind_evals[art]['creator']
+            creator_aest = ind_evals[art][creator][1]['aesthetic']
+            if creator_aest not in aest_vals:
+                aest_vals[creator_aest] = {}
+            for aest in aest_agents.keys():
+                if aest != creator_aest:
+                    if aest not in aest_vals[creator_aest]:
+                        aest_vals[creator_aest][aest] = []
+                    agent = aest_agents[aest]
+                    val = ind_evals[art][agent][1]['value']
+                    aest_vals[creator_aest][aest].append(val)
+
+    for aest1, aests in aest_vals.items():
+        for aest2, vals in aests.items():
+            aest_vals[aest1][aest2] = np.mean(vals)
+    ind_eval_stats['aest_vals'] = aest_vals
+
     return ind_eval_stats
 
 
@@ -860,6 +912,61 @@ def create_solo_val_nov_plots(step_vals_novs_solo):
         plt.close()
 
 
+def make_aest_val_table_and_image(own_art_stats, ind_eval_stats, pairs, collab_eval_stats, format_s, img_name = None):
+    rows = []
+
+    aest1_val1 = []
+    aest1_val2 = []
+    collab_val1 = []
+    collab_val2 = []
+    aest2_val1 = []
+    aest2_val2 = []
+
+    for pair in pairs:
+        if pair[0] != pair[1]:
+            if pair[0] == 'benford' and pair[1] == 'fd_aesthetics':
+                idx = len(aest1_val1)
+
+            aest1_val1.append(own_art_stats['aest_means'][pair[0]]['val'])
+            aest1_val2.append(ind_eval_stats['aest_vals'][pair[0]][pair[1]])
+            collab_val1.append(collab_eval_stats['aest_pair_separate_vals'][pair][pair[0]])
+            collab_val2.append(collab_eval_stats['aest_pair_separate_vals'][pair][pair[1]])
+            aest2_val1.append(ind_eval_stats['aest_vals'][pair[1]][pair[0]])
+            aest2_val2.append(own_art_stats['aest_means'][pair[1]]['val'])
+            row = [pair,
+                   '{}/{}'.format(format_s % aest1_val1[-1],
+                                  format_s % aest1_val2[-1]),
+                   '{}/{}'.format(format_s % collab_val1[-1],
+                                  format_s % collab_val2[-1]),
+                   '{}/{}'.format(format_s % aest2_val1[-1],
+                                  format_s % aest2_val2[-1])]
+            rows.append(row)
+    print(tabulate(rows, headers=['1./2.', 'created by 1.', 'created in collab', 'created by 2.']))
+
+    if img_name is not None:
+        N = 3
+        aest1_vals = (aest1_val1[idx], collab_val1[idx], aest2_val1[idx])
+
+        ind = np.arange(N)  # the x locations for the groups
+        width = 0.35  # the width of the bars
+
+        fig, ax = plt.subplots()
+        rects1 = ax.bar(ind, aest1_vals, width, color='r')
+
+        aest2_vals = (aest1_val2[idx], collab_val2[idx], aest2_val2[idx])
+        rects2 = ax.bar(ind + width, aest2_vals, width, color='y')
+
+        # add some text for labels, title and axes ticks
+        ax.set_ylabel('Value')
+        ax.set_xlabel('Creator')
+        ax.set_xticks(ind + width / 2)
+        ax.set_xticklabels(('benford', 'both', 'fd_aesthetics'))
+
+        ax.legend((rects1[0], rects2[0]), ('benford', 'fd_aesthetics'))
+        plt.savefig(img_name)
+        plt.close()
+
+
 def make_aesthetic_rows(collab_eval_stats, own_art_stats, aest_rows, aest_first_choice_rows, eval_ratios, format_s):
     for aest in collab_eval_stats['aest_top_pick_stats']:
         if aest not in eval_ratios:
@@ -982,6 +1089,13 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         aesthetic_pair_rows, pairs = print_aesthetic_table(collab_eval_stats, collab_art_stats, format_s, models)
         print()
 
+        # Print aesthetic pair separate val table
+        img_name = None
+        if model == 'random':
+            img_name = 'random_aest_vals.png'
+        make_aest_val_table_and_image(own_art_stats, ind_eval_stats, pairs, collab_eval_stats, format_s, img_name)
+        print()
+
         # Create image of aesthetic pair count, success ratio and mean rank
         table = np.array(aesthetic_pair_rows)[:, -3:]
         table = np.array(table, dtype=float)
@@ -1007,6 +1121,7 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         step_vals_novs_solo[model] = {}
         step_vals_novs_solo[model]['vals'] = own_art_stats['step_vals']
         step_vals_novs_solo[model]['novs'] = own_art_stats['step_novs']
+
 
     # Calculate own collab eval ratios w.r.t random
     for aest in eval_ratios.keys():
