@@ -14,7 +14,7 @@ AEST_ORDER = ['benford', 'entropy', 'global_contrast_factor', 'symm', 'fd_aesthe
 # plt.plot(x, y, style['line style'], dashes=style['dashes'], color=style['color'], label=style['label'])
 #
 # Designed to be used with dictionary information where dict keys are model
-# names in our experiments. (Labels will be the same as in our current paper.)
+# names in our experiments, e.g. Q1. (Labels will be the same as in our current paper.)
 # See pstats.py create_collab_partner_plot for example.
 MODEL_STYLES = {
     'random':
@@ -44,7 +44,7 @@ MODEL_STYLES = {
     'lr':
         {'line style': '--',
          'label': 'Linear reg.',
-         'color': COLORS[4],
+         'color': COLORS[5],
          'dashes': [5, 2, 1, 2, 1, 2]
          },
 }
@@ -78,7 +78,7 @@ AEST_STYLES = {
     'fd_aesthetics':
         {'line style': '--',
          'label': 'Fractal dimension',
-         'color': COLORS[4],
+         'color': COLORS[5],
          'dashes': [5, 2, 1, 2, 1, 2]
          },
 }
