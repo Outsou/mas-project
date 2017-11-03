@@ -16,7 +16,7 @@ import pandas as pd
 
 from experiments.collab.chk_runs import get_last_lines
 from utils.util import primitives
-from utils.plot_styling import MODEL_STYLES
+from utils.plot_styling import MODEL_STYLES, MODEL_ORDER
 
 
 # Skills shared by all agents
@@ -537,20 +537,23 @@ def create_collab_partner_plot(means, means_rev):
     ax1.set_xlabel('Iteration')
     ax1.set_ylabel('Cumulative number of collaboration partners')
     i = 0
-
-    for model, mean in means.items():
+    # Means is a dictionary with (internal) model names as keys and values are
+    # vectors of numbers.
+    smeans = sorted(means.items(), key=lambda x: MODEL_ORDER.index(x[0]))
+    for model, mean in smeans:
         style = MODEL_STYLES[model]
         x = list(range(2, 202, 2))
-        ax1.plot(x, mean, style['line style'], label=style['label'], color=style['color'])
+        ax1.plot(x, mean, style['line style'], dashes=style['dashes'], label=style['label'], color=style['color'])
         i += 1
 
     ax2 = ax1.twinx()
     ax2.set_ylabel("Number of collaboration partners in iterations left")
     i = 0
-    for model, mean in means_rev.items():
+    smeans = sorted(means_rev.items(), key=lambda x: MODEL_ORDER.index(x[0]))
+    for model, mean in smeans:
         style = MODEL_STYLES[model]
         x = list(range(2, 202, 2))
-        ax2.plot(x, mean, style['line style'], label=style['label'], color=style['color'])
+        ax2.plot(x, mean, style['line style'], dashes=style['dashes'], label=style['label'], color=style['color'])
         i += 1
     ax1.legend(loc='lower center')
     fig.savefig("cumulative_collaboration_partners.pdf")
