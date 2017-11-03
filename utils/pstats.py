@@ -527,18 +527,32 @@ def calculate_collab_partner_means(all_collab_partners):
     return [s / n_agents for s in sums]
 
 
-def create_collab_partner_plot(means):
+def create_collab_partner_plot(means, means_rev):
     sns.set()
     sns.set_style("white")
     sns.set_context("paper")
-    plt.figure()
-    plt.title("Cumulative collaboration partner count for schemes")
-    plt.xlabel('Iteration')
-    plt.ylabel('Cumulative number of collaboration partners')
-    for model, mean in means.items():
+    fig, ax1 = plt.subplots()
+    ax1.set_title("Cumulative collaboration partner count for schemes")
+    ax1.set_xlabel('Iteration')
+    ax1.set_ylabel('Cumulative number of collaboration partners')
+    i = 0
+    models = sorted(list(means.items()), key=operator.itemgetter(0))
+    from utils.plot_styling import LINE_STYLES
+    for model, mean in models:
         x = list(range(2, 202, 2))
-        plt.plot(x, mean, label=model)
-    plt.savefig("cumulative_collaboration_partners.png")
+        ax1.plot(x, mean, LINE_STYLES[i], label=model)
+        i += 1
+
+    ax2 = ax1.twinx()
+    ax2.set_ylabel("Number of collaboration partners in iterations left")
+    models = sorted(list(means_rev.items()), key=operator.itemgetter(0))
+    i = 0
+    for model, mean in models:
+        x = list(range(2, 202, 2))
+        ax2.plot(x, mean, LINE_STYLES[i], label=model)
+        i += 1
+    ax1.legend(loc='lower center')
+    fig.savefig("cumulative_collaboration_partners.pdf")
 
 
 def analyze_model_dir(path):
@@ -553,9 +567,9 @@ def analyze_model_dir(path):
     #collab_art_stats = analyze_collab_arts(dirs)
     #own_art_stats, agent_info = analyze_own_arts(dirs)
     #ind_eval_stats = analyze_ind_evals(dirs)
-    cumulative_collab_partner_means = analyze_agent_collab_skills(dirs, path)
+    cumulative_collab_partner_means, cumulative_collab_partners_rev_means = analyze_agent_collab_skills(dirs, path)
 
-    return cumulative_collab_partner_means
+    return cumulative_collab_partner_means, cumulative_collab_partners_rev_means
 
 def get_agent_infos(dirs):
     # key:dir value: dict
@@ -587,23 +601,26 @@ def analyze_agent_collab_skills(dirs, path):
     none_various_fb = []
     other_nonvar_fb = []
     n_collab_partners_all = []
+    n_collab_partners_rev_all = []
 
     for dir in dirs:
         agents = agent_info[dir]
         pref_lists = pickle.load(open(os.path.join(dir, 'pref_lists.pkl'), 'rb'))
         sub_dirs = get_dirs_in_dir(dir)
         for sub_dir in sub_dirs:
-            # Number of overall collaboration partners per collaboration iter.
-            n_collab_partners = []
-            # Previous collaboration partners
-            prev_collab_partners = []
+            with open(os.path.join(sub_dir, pkl_name), 'rb') as pkl:
+                collab_arts_dict = pickle.load(pkl)
             gi = pickle.load(
                 open(os.path.join(sub_dir, 'general_info.pkl'), 'rb'))
             agent = agents[gi['addr']]
             pref_list = pref_lists[gi['addr']]
-            #print(agent.keys())
-            with open(os.path.join(sub_dir, pkl_name), 'rb') as pkl:
-                collab_arts_dict = pickle.load(pkl)
+
+            # Number of overall collaboration partners per collaboration iter.
+            n_collab_partners = []
+            # Previous collaboration partners
+            prev_collab_partners = []
+            n_collab_partners_rev = [0 for _ in range(len(collab_arts_dict['fb']))]
+            prev_collab_partners_rev = []
             same_skills_succ = []   # Same skills for succeeded collab
             same_skills_fail = []   # Same skills for failed collab
             same_skills_all = []    # Same skills for all collab
@@ -618,6 +635,19 @@ def analyze_agent_collab_skills(dirs, path):
             else:
                 nonvar_fb.append(collab_arts_dict['fb'])
 
+            for i in reversed(range(len(collab_arts_dict['fb']))):
+                caddr = collab_arts_dict['caddr'][i]
+                if caddr in prev_collab_partners_rev:
+                    n_collab_partners_rev[i] = n_collab_partners_rev[i + 1]
+                else:
+                    if len(prev_collab_partners_rev) == 0:
+                        n_collab_partners_rev[i] = 1
+                        prev_collab_partners_rev.append(caddr)
+                    else:
+                        n = n_collab_partners_rev[i + 1] + 1
+                        n_collab_partners_rev[i] = n
+                        prev_collab_partners_rev.append(caddr)
+
             fb = 0  # Collab successes until now
             for i in range(len(collab_arts_dict['fb'])):
                 caddr = collab_arts_dict['caddr'][i]
@@ -627,6 +657,7 @@ def analyze_agent_collab_skills(dirs, path):
                 else:
                     if len(n_collab_partners) == 0:
                         n_collab_partners.append(1)
+                        prev_collab_partners.append(caddr)
                     else:
                         n = n_collab_partners[-1] + 1
                         n_collab_partners.append(n)
@@ -669,6 +700,7 @@ def analyze_agent_collab_skills(dirs, path):
                         else:
                             none_various_fb.append(0)
 
+            n_collab_partners_rev_all.append(n_collab_partners_rev)
             n_collab_partners_all.append(n_collab_partners)
             agent['same_skills_succ'] = same_skills_succ
             agent['same_skills_fail'] = same_skills_fail
@@ -695,7 +727,9 @@ def analyze_agent_collab_skills(dirs, path):
     print_agent_info_statistics(agent_info, both_various_fb, init_various_fb,
                                 other_various_fb, none_various_fb)
 
-    return calculate_collab_partner_means(n_collab_partners_all)
+    mean_collab_partners = calculate_collab_partner_means(n_collab_partners_all)
+    mean_collab_partners_rev = calculate_collab_partner_means(n_collab_partners_rev_all)
+    return mean_collab_partners, mean_collab_partners_rev
 
 
 def analyze_agent_info(agent_info):
@@ -815,6 +849,7 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=[]):
     format_s = '%.{}f'.format(decimals)
     models = ['']
     means = {}
+    means_rev = {}
 
     for model_dir in model_dirs:
         model = os.path.split(model_dir)[1]
@@ -824,11 +859,12 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=[]):
             continue
 
         models.append(model)
-        cumulative_collab_partner_means = analyze_model_dir(model_dir)
+        cumulative_collab_partner_means, cumulative_collab_partners_rev_means = analyze_model_dir(model_dir)
         means[model] = cumulative_collab_partner_means
+        means_rev[model] = cumulative_collab_partners_rev_means
         print("***************************************************\n")
 
-    create_collab_partner_plot(means)
+    create_collab_partner_plot(means, means_rev)
 
 
 
