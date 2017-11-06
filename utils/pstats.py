@@ -16,7 +16,7 @@ import pandas as pd
 
 from experiments.collab.chk_runs import get_last_lines
 from utils.util import primitives
-from utils.plot_styling import MODEL_STYLES, MODEL_ORDER
+from utils.plot_styling import MODEL_STYLES, MODEL_ORDER, BASE_FIG_SIZE
 
 
 # Skills shared by all agents
@@ -40,480 +40,9 @@ def ci(std, n, conf=99):
     return plus_minus
 
 
-def create_param_graph(avgs_folder, save_folder, param_name, param_vals, models):
-    files = list(sorted(os.listdir(avgs_folder)))
-    random_rewards = []
-
-    rewards = {}
-    for model in models:
-        rewards[model] = []
-
-    for file in files:
-        stats = pickle.load(open(os.path.join(avgs_folder, file), 'rb'))
-        max_reward = np.sum(stats['max_rewards'])
-        for model in models:
-            rewards[model].append(np.sum(stats[model]['rewards']) / max_reward)
-        random_rewards.append(np.sum(stats['random_rewards']) / max_reward)
-
-    plt.plot(param_vals, random_rewards, label='random')
-
-    for model in models:
-        plt.plot(param_vals, rewards[model], label=model)
-
-    plt.legend()
-    plt.xlabel(param_name)
-    plt.ylabel('Reward %')
-    plt.savefig(os.path.join(save_folder, '{}.png'.format(param_name)))
-    plt.close()
-
-
-def calculate_agent_averages(path, models):
-    """Calculates average stats of all the runs in a setup for each agent."""
-    avgs = []
-    for dir in os.listdir(path):
-        directory = os.path.join(path, dir)
-        if models is not None:
-            avg_stats = calculate_averages(directory, models)
-        else:
-            avg_stats = calculate_averages_single(directory)
-        pickle.dump(avg_stats, open(os.path.join(directory, 'avg_stats.p'), 'wb'))
-        avgs.append(avg_stats)
-    return avgs
-
-
-def calculate_avg_of_avgs(avgs):
-    """Calculates average stats from multiple average stats."""
-    avg_of_avgs = {}
-
-    for key, value in avgs[0].items():
-        if type(value) is dict:
-            avg_of_avgs[key] = {}
-            for sub_key in value.keys():
-                avg_of_avgs[key][sub_key] = _average_arrays(avgs,
-                                                            avgs[0][key][sub_key].shape,
-                                                            key,
-                                                            sub_key)
-        else:
-            avg_of_avgs[key] = _average_arrays(avgs, avgs[0][key].shape, key)
-
-    return avg_of_avgs
-
-
-def calculate_setup_averages(path, models=None):
-    """For each setup stats of all agents are averaged.
-    Returns a list containing average stats from each setup."""
-    avgs = []
-    # Get the directories where stats are saved for each setup
-    dirs = [file for file in os.listdir(path) if os.path.isdir(os.path.join(path, file))]
-    for dir in sorted(dirs):
-        setup_avgs = calculate_agent_averages(os.path.join(path, dir), models)
-        setup_avg = calculate_avg_of_avgs(setup_avgs)
-        avgs.append(setup_avg)
-    return avgs
-
-
-def reward_graph(stats, window_size, filepath):
-    rewards = stats['rewards']
-    x = list(range(0, len(rewards), window_size))
-    rewards_y = [np.sum(rewards[i:i + window_size]) for i in x]
-
-    random_rewards = stats['random_rewards']
-    random_y = [np.sum(random_rewards[i:i + window_size]) for i in x]
-
-    plt.plot(x, rewards_y, label='rewards')
-    plt.plot(x, random_y, label='random')
-    plt.legend()
-    # plt.show()
-    plt.savefig(filepath)
-    plt.close()
-
 def get_dirs_in_dir(path):
     dirs = [os.path.join(path, file) for file in os.listdir(path) if os.path.isdir(os.path.join(path, file))]
     return dirs
-
-def common_society_analysis(dirs, pickle_name):
-    stat_dict = {}
-
-    evals = []
-    novs = []
-    vals = []
-    for dir in dirs:
-        pkl = os.path.join(dir, pickle_name)
-        pkl_dict = pickle.load(open(pkl, 'rb'))
-        keys = pkl_dict.keys()
-        for key in keys:
-            agents = list(pkl_dict[key].keys())
-            agents.remove('creator')
-            for agent in agents:
-                evals.append(pkl_dict[key][agent][0])
-                novs.append(pkl_dict[key][agent][1]['novelty'])
-                vals.append(pkl_dict[key][agent][1]['value'])
-
-    stat_dict['avg_eval'] = sum(evals) / len(evals)
-    stat_dict['avg_nov'] = sum(novs) / len(novs)
-    stat_dict['avg_val'] = sum(vals) / len(vals)
-
-    return stat_dict
-
-
-def collab_success_per_step(collab_eval_keys, collab_steps):
-    successes = np.zeros(collab_steps)
-    for key in collab_eval_keys:
-        step = int(key[:5])
-        idx = int(step / 2 - 1)
-        successes[idx] += 1
-    return successes
-
-
-def get_step_top_values(collab_evals, pref_lists, collab_steps, other_vals=False):
-    """Makes a dictionary where values are listed for each step for collab artifacts in collab_evals."""
-    top_k = [1, 3, 5]
-
-    top = {'all': {'eval': [[] for x in range(collab_steps)],
-                   'val': [[] for x in range(collab_steps)],
-                   'nov': [[] for x in range(collab_steps)]}}
-    aesthetic_top = {}
-
-    for k in top_k:
-        top[str(k)] = {'eval': [[] for x in range(collab_steps)],
-                       'val': [[] for x in range(collab_steps)],
-                       'nov': [[] for x in range(collab_steps)]}
-
-    for collab_art, stats in collab_evals.items():
-        step = int(collab_art[:5])
-        idx = int(step / 2 - 1)
-        creators = stats['creator'].split(' - ')
-
-        for creator in creators:
-            other = [agent for agent in creators if agent != creator][0]
-
-            if other_vals:
-                val_agent = other
-            else:
-                val_agent = creator
-
-            eval = collab_evals[collab_art][val_agent][0]
-            val = collab_evals[collab_art][val_agent][1]['value']
-            nov = collab_evals[collab_art][val_agent][1]['novelty']
-
-            pref_list = pref_lists[creator][idx]
-            aest = collab_evals[collab_art][creator][1]['aesthetic']
-
-
-            if aest not in aesthetic_top:
-                aesthetic_top[aest] = {}
-                for k in top_k:
-                    aesthetic_top[aest][str(k)] = {'eval': [],
-                                                   'val': [],
-                                                   'nov': []}
-                aesthetic_top[aest]['all'] = {'eval': [],
-                                              'val': [],
-                                              'nov': []}
-
-            for k in top_k:
-                if other in pref_list[:k]:
-                    top[str(k)]['eval'][idx].append(eval)
-                    top[str(k)]['val'][idx].append(val)
-                    top[str(k)]['nov'][idx].append(nov)
-
-                    aesthetic_top[aest][str(k)]['eval'].append(eval)
-                    aesthetic_top[aest][str(k)]['val'].append(val)
-                    aesthetic_top[aest][str(k)]['nov'].append(nov)
-
-            top['all']['eval'][idx].append(eval)
-            top['all']['val'][idx].append(val)
-            top['all']['nov'][idx].append(nov)
-
-            aesthetic_top[aest]['all']['eval'].append(eval)
-            aesthetic_top[aest]['all']['val'].append(val)
-            aesthetic_top[aest]['all']['nov'].append(nov)
-    return top, aesthetic_top
-
-
-def append_top_dictionaries(dict1, dict2):
-    """Appends top pick stat dictionaries."""
-    if len(list(dict1.keys())) == 0:
-        return dict2
-
-    res_dict = {}
-    for key in dict1.keys():
-        res_dict[key] = {}
-        for sub_key in dict1[key].keys():
-            res_dict[key][sub_key] = []
-            for i in range(len(dict1[key][sub_key])):
-                res_dict[key][sub_key].append(dict1[key][sub_key][i] + dict2[key][sub_key][i])
-    return res_dict
-
-
-def append_aest_top_dicts(dict1, dict2):
-    if len(list(dict1.keys())) == 0:
-        return dict2
-
-    res_dict = {}
-    for aest in dict1.keys():
-        res_dict[aest] = {}
-        for k in dict1[aest].keys():
-            res_dict[aest][k] = {}
-            for key in dict1[aest][k].keys():
-                res_dict[aest][k][key] = dict1[aest][k][key] + dict2[aest][k][key]
-
-    return res_dict
-
-def calculate_top_dict_means(top_dict):
-    """Calculates stepwise means and overall means."""
-    res_dict = {}
-    for key in top_dict.keys():
-        res_dict[key] = {}
-        for sub_key, val_list in top_dict[key].items():
-            res_dict[key][sub_key] = []
-            all = []
-            for i in range(len(top_dict[key][sub_key])):
-                if len(top_dict[key][sub_key][i]) == 0:
-                    res_dict[key][sub_key].append(None)
-                else:
-                    res_dict[key][sub_key].append(np.mean(top_dict[key][sub_key][i]))
-                all += top_dict[key][sub_key][i]
-            res_dict[key][sub_key + '_mean'] = np.mean(all)
-    return res_dict
-
-
-def calculate_aest_top_means(aest_dict):
-    mean_dict = {}
-    for aest in aest_dict.keys():
-        mean_dict[aest] = {}
-        for k in aest_dict[aest].keys():
-            mean_dict[aest][k] = {}
-            for key in aest_dict[aest][k].keys():
-                mean_dict[aest][k][key] = np.mean(aest_dict[aest][k][key])
-    return mean_dict
-
-
-def analyze_collab_evals(dirs):
-    pickle_name = 'collab_evals.pkl'
-    collab_eval_stats = common_society_analysis(dirs, pickle_name)
-
-    # Get number of collab attempts
-    first_dir = os.path.split(dirs[0])[1]
-    collab_iters = int(int(re.findall(r'i\d+', first_dir)[0][1:]) / 2)
-    agents = int(re.findall(r'a\d+', first_dir)[0][1:])
-
-    collab_attempts = agents / 2 * collab_iters
-    collab_ratios = []
-
-    aesthetic_pair_vals = {}
-    top_pick_stats = {}
-    top_pick_stats_other = {}
-    aesthetic_top_stats = {}
-    aesthetic_top_stats_other = {}
-    step_successes = np.zeros(collab_iters)
-    for dir in dirs:
-        # Load pickles
-        collab_evals_pkl = os.path.join(dir, pickle_name)
-        collab_evals = pickle.load(open(collab_evals_pkl, 'rb'))
-        pref_lists_pkl = os.path.join(dir, 'pref_lists.pkl')
-        pref_lists = pickle.load(open(pref_lists_pkl, 'rb'))
-        collab_arts = collab_evals.keys()
-
-        # Calculate per step successes
-        step_successes += collab_success_per_step(list(collab_evals.keys()), collab_iters)
-
-        # Calculate per step top pick values
-        top_picks, aesthetic_tops = get_step_top_values(collab_evals, pref_lists, collab_iters)
-        top_picks_other, aesthetic_tops_other = get_step_top_values(collab_evals, pref_lists, collab_iters, True)
-
-        top_pick_stats = append_top_dictionaries(top_pick_stats, top_picks)
-        aesthetic_top_stats = append_aest_top_dicts(aesthetic_top_stats, aesthetic_tops)
-
-        top_pick_stats_other = append_top_dictionaries(top_pick_stats_other, top_picks_other)
-        aesthetic_top_stats_other = append_aest_top_dicts(aesthetic_top_stats_other, aesthetic_tops_other)
-
-        for collab_art in collab_arts:
-            creators = collab_evals[collab_art]['creator'].split(' - ')
-
-            # Calculate averages for aesthetic pairs
-            pair = []
-            for creator in creators:
-                pair.append(collab_evals[collab_art][creator][1]['aesthetic'])
-            pair.sort()
-            pair = tuple(pair)
-            if pair not in aesthetic_pair_vals:
-                aesthetic_pair_vals[pair] = {'eval': [],
-                                             'val': [],
-                                             'nov': [],
-                                             'count': 0}
-            for creator in creators:
-                aesthetic_pair_vals[pair]['eval'].append(collab_evals[collab_art][creator][0])
-                aesthetic_pair_vals[pair]['val'].append(collab_evals[collab_art][creator][1]['value'])
-                aesthetic_pair_vals[pair]['nov'].append(collab_evals[collab_art][creator][1]['novelty'])
-            aesthetic_pair_vals[pair]['count'] += 1
-
-            # Calculate collab success ratio for simulation run
-            collab_ratios.append(len(collab_arts) / collab_attempts)
-
-    collab_eval_stats['success_ratio'] = {'mean': np.mean(collab_ratios),
-                                          'conf_int': st.t.interval(0.99, len(collab_ratios) - 1,
-                                                                    loc=np.mean(collab_ratios),
-                                                                    scale=st.sem(collab_ratios))}
-
-    collab_eval_stats['aesthetic_pairs'] = {}
-    for pair, vals in aesthetic_pair_vals.items():
-        collab_eval_stats['aesthetic_pairs'][pair] = {'eval': sum(vals['eval']) / len(vals['eval']),
-                                                      'val': sum(vals['val']) / len(vals['val']),
-                                                      'nov': sum(vals['nov']) / len(vals['nov']),
-                                                      'count': vals['count']}
-
-    top_pick_means = calculate_top_dict_means(top_pick_stats)
-    aesthetic_top_pick_means = calculate_aest_top_means(aesthetic_top_stats)
-
-    top_pick_means_other = calculate_top_dict_means(top_pick_stats_other)
-    aesthetic_top_pick_means_other = calculate_aest_top_means(aesthetic_top_stats_other)
-
-    collab_eval_stats['top_pick_stats'] = top_pick_means
-    collab_eval_stats['aest_top_pick_stats'] = aesthetic_top_pick_means
-    collab_eval_stats['top_pick_stats_other'] = top_pick_means_other
-    collab_eval_stats['aest_top_pick_stats_other'] = aesthetic_top_pick_means_other
-    collab_eval_stats['step_successes'] = step_successes / len(dirs)
-    collab_eval_stats['num_of_agents'] = agents
-
-    return collab_eval_stats
-
-
-def analyze_ind_evals(dirs):
-    ind_eval_stats = common_society_analysis(dirs, 'ind_evals.pkl')
-    return ind_eval_stats
-
-
-def common_agent_analysis(dirs, pkl_name):
-    stat_dict = {}
-
-    evals = []
-    novs = []
-    vals = []
-    for dir in dirs:
-        sub_dirs = get_dirs_in_dir(dir)
-        for sub_dir in sub_dirs:
-            pkl = os.path.join(sub_dir, pkl_name)
-            pkl_dict = pickle.load(open(pkl, 'rb'))
-            evals += pkl_dict['eval']
-            novs += pkl_dict['nov']
-            vals += pkl_dict['val']
-
-    stat_dict['avg_eval'] = sum(evals) / len(evals)
-    stat_dict['avg_nov'] = sum(novs) / len(novs)
-    stat_dict['avg_val'] = sum(vals) / len(vals)
-    return stat_dict
-
-
-def analyze_collab_arts(dirs):
-    pkl_name = 'collab_arts.pkl'
-    collab_art_stats = {}
-
-    aesthetic_pair_stats = {}
-    aesthetic_stats = {}
-
-    for dir in dirs:
-        sub_dirs = get_dirs_in_dir(dir)
-        for sub_dir in sub_dirs:
-            collab_arts_dict = pickle.load(open(os.path.join(sub_dir, pkl_name), 'rb'))
-            general_info = pickle.load(open(os.path.join(sub_dir, 'general_info.pkl'), 'rb'))
-
-            # Calculate how this aesthetic does with other aesthetics
-            aest = general_info['aesthetic']
-            if aest not in aesthetic_stats:
-                aesthetic_stats[aest] = {}
-
-            for i in range(len(collab_arts_dict['fb'])):
-                caest = collab_arts_dict['caest'][i]
-                if caest not in aesthetic_stats[aest]:
-                    aesthetic_stats[aest][caest] = {'eval': [],
-                                                    'val': [],
-                                                    'nov': []}
-                # If collab succeeded
-                if collab_arts_dict['fb'][i]:
-                    # Calculate index in the value lists
-                    idx = sum(collab_arts_dict['fb'][:i+1]) - 1
-                    aesthetic_stats[aest][caest]['eval'].append(collab_arts_dict['eval'][idx])
-                    aesthetic_stats[aest][caest]['val'].append(collab_arts_dict['val'][idx])
-                    aesthetic_stats[aest][caest]['nov'].append(collab_arts_dict['nov'][idx])
-
-            # Calculate how often aesthetic pairs succeeded and failed
-            for i in range(len(collab_arts_dict['fb'])):
-                aest_pair = tuple(sorted([aest, collab_arts_dict['caest'][i]]))
-                if aest_pair not in aesthetic_pair_stats:
-                    aesthetic_pair_stats[aest_pair] = {'succeeded': 0, 'failed': 0, 'rank': []}
-                if collab_arts_dict['fb'][i]:
-                    aesthetic_pair_stats[aest_pair]['succeeded'] += 1
-                    # Calculate index of rank
-                    rank_idx = sum(collab_arts_dict['fb'][:i+1]) - 1
-                    aesthetic_pair_stats[aest_pair]['rank'].append(collab_arts_dict['rank'][rank_idx])
-                else:
-                    aesthetic_pair_stats[aest_pair]['failed'] += 1
-
-    # Divide aesthetic pair stats by 2, because the same stat is calculated for both agents
-    for aest_pair in aesthetic_pair_stats.keys():
-        aesthetic_pair_stats[aest_pair]['succeeded'] /= 2
-        aesthetic_pair_stats[aest_pair]['failed'] /= 2
-        aesthetic_pair_stats[aest_pair]['rank'] = sum(aesthetic_pair_stats[aest_pair]['rank']) \
-                                                  / len(aesthetic_pair_stats[aest_pair]['rank'])
-
-    # Calculate aesthetic averages
-    for aesthetic, caesthetics in aesthetic_stats.items():
-        for caesthetic, vals in caesthetics.items():
-            aesthetic_stats[aesthetic][caesthetic]['eval'] = sum(vals['eval']) / len(vals['eval'])
-            aesthetic_stats[aesthetic][caesthetic]['val'] = sum(vals['val']) / len(vals['val'])
-            aesthetic_stats[aesthetic][caesthetic]['nov'] = sum(vals['nov']) / len(vals['nov'])
-
-    collab_art_stats['aesthetic_pairs'] = aesthetic_pair_stats
-    collab_art_stats['aesthetic'] = aesthetic_stats
-
-    return collab_art_stats
-
-def analyze_own_arts(dirs):
-    own_art_stats = common_agent_analysis(dirs, 'own_arts.pkl')
-
-    first_dir = os.path.split(dirs[0])[1]
-    iters = int(int(re.findall(r'i\d+', first_dir)[0][1:]) / 2)
-
-    vals = [[] for _ in range(iters)]
-    novs = [[] for _ in range(iters)]
-    aest_stats = {}
-
-    for dir in dirs:
-        sub_dirs = get_dirs_in_dir(dir)
-        for sub_dir in sub_dirs:
-            pkl = os.path.join(sub_dir, 'own_arts.pkl')
-            own_arts = pickle.load(open(pkl, 'rb'))
-            general_info = pickle.load(open(os.path.join(sub_dir, 'general_info.pkl'), 'rb'))
-            aest = general_info['aesthetic']
-
-            if aest not in aest_stats:
-                aest_stats[aest] = {'evals': [],
-                                    'vals': [],
-                                    'novs': []}
-
-            aest_stats[aest]['evals'] += own_arts['eval']
-            aest_stats[aest]['vals'] += own_arts['val']
-            aest_stats[aest]['novs'] += own_arts['nov']
-
-            for i in range(iters):
-                vals[i].append(own_arts['val'][i])
-                novs[i].append(own_arts['nov'][i])
-
-    for i in range(iters):
-        vals[i] = np.mean(vals[i])
-        novs[i] = np.mean(novs[i])
-
-    aest_means = {}
-    for aest in aest_stats.keys():
-        aest_means[aest] = {}
-        aest_means[aest]['eval'] = np.mean(aest_stats[aest]['evals'])
-        aest_means[aest]['val'] = np.mean(aest_stats[aest]['vals'])
-        aest_means[aest]['nov'] = np.mean(aest_stats[aest]['novs'])
-
-    own_art_stats['step_vals'] = vals
-    own_art_stats['step_novs'] = novs
-    own_art_stats['aest_means'] = aest_means
-    return own_art_stats
 
 
 def calculate_collab_partner_means(all_collab_partners):
@@ -528,14 +57,15 @@ def calculate_collab_partner_means(all_collab_partners):
     return [s / n_agents for s in sums]
 
 
-def create_collab_partner_plot(means, means_rev):
+def create_collab_partner_plot(means, means_rev, separated=True):
+    fig_size = BASE_FIG_SIZE
     sns.set()
     sns.set_style("white")
     sns.set_context("paper")
-    fig, ax1 = plt.subplots()
-    ax1.set_title("Cumulative collaboration partner count for schemes")
+    fig, ax1 = plt.subplots(figsize=fig_size)
+    #ax1.set_title("Cumulative collaboration partner count for schemes")
     ax1.set_xlabel('Iteration')
-    ax1.set_ylabel('Cumulative number of collaboration partners')
+    ax1.set_ylabel('Distinct partners (cumulative)')
     i = 0
     # Means is a dictionary with (internal) model names as keys and values are
     # vectors of numbers.
@@ -546,8 +76,15 @@ def create_collab_partner_plot(means, means_rev):
         ax1.plot(x, mean, style['line style'], dashes=style['dashes'], label=style['label'], color=style['color'])
         i += 1
 
-    ax2 = ax1.twinx()
-    ax2.set_ylabel("Number of collaboration partners in iterations left")
+    if separated:
+        ax1.legend(loc='lower right')
+        plt.tight_layout()
+        fig.savefig("cumulative_collaboration_partners.pdf")
+        fig, ax2 = plt.subplots(figsize=fig_size)
+        ax2.set_xlabel("Iteration")
+    else:
+        ax2 = ax1.twinx()
+    ax2.set_ylabel("Distinct partners (remaining)")
     i = 0
     smeans = sorted(means_rev.items(), key=lambda x: MODEL_ORDER.index(x[0]))
     for model, mean in smeans:
@@ -555,8 +92,9 @@ def create_collab_partner_plot(means, means_rev):
         x = list(range(2, 202, 2))
         ax2.plot(x, mean, style['line style'], dashes=style['dashes'], label=style['label'], color=style['color'])
         i += 1
-    ax1.legend(loc='lower center')
-    fig.savefig("cumulative_collaboration_partners.pdf")
+    ax2.legend(loc='lower left')
+    plt.tight_layout()
+    fig.savefig("remaining_collaboration_partners.pdf")
 
 
 def analyze_model_dir(path):
@@ -590,6 +128,28 @@ def get_agent_infos(dirs):
     return agent_info
 
 
+def update_func_fbs(all_funcs, a1, a2, fb):
+    for fname in all_funcs.keys():
+        init_has = has_func(a1, fname)
+        other_has = has_func(a2, fname)
+        if init_has and other_has:
+            all_funcs[fname]['both_func_fb'].append(fb)
+        elif init_has:
+            all_funcs[fname]['init_func_fb'].append(fb)
+        elif other_has:
+            all_funcs[fname]['other_func_fb'].append(fb)
+        else:
+            all_funcs[fname]['none_func_fb'].append(fb)
+
+
+def has_funcs(agent, func_names):
+    return {fname: has_func(agent, fname) for fname in func_names}
+
+
+def has_func(agent, func_name):
+    return func_name in agent['skills']
+
+
 def analyze_agent_collab_skills(dirs, path):
     """Analyze the effect of agent skills on the collaboration results.
     """
@@ -597,13 +157,11 @@ def analyze_agent_collab_skills(dirs, path):
     agent_info = get_agent_infos(dirs)
     analyze_agent_info(agent_info)
     var_funcs = ['perlin1', 'perlin2', 'simplex2', 'plasma']
-    various_fb = []
-    nonvar_fb = []
+    all_funcs = {e: {'both_func_fb': [], 'init_func_fb': [], 'other_func_fb': [], 'none_func_fb': []} for e in list(primitives.keys())}
     both_various_fb = []
     init_various_fb = []
     other_various_fb = []
     none_various_fb = []
-    other_nonvar_fb = []
     n_collab_partners_all = []
     n_collab_partners_rev_all = []
 
@@ -632,12 +190,7 @@ def analyze_agent_collab_skills(dirs, path):
             same_skills_first = []
             all_collab = []
             var_collab = []
-            var_collab_fb = []
-            has_various = any([e in agent['skills'] for e in var_funcs])
-            if has_various:
-                various_fb.append(collab_arts_dict['fb'])
-            else:
-                nonvar_fb.append(collab_arts_dict['fb'])
+            has_various = any([has_func(agent, e) for e in var_funcs])
 
             for i in reversed(range(len(collab_arts_dict['fb']))):
                 caddr = collab_arts_dict['caddr'][i]
@@ -655,6 +208,7 @@ def analyze_agent_collab_skills(dirs, path):
             fb = 0  # Collab successes until now
             for i in range(len(collab_arts_dict['fb'])):
                 caddr = collab_arts_dict['caddr'][i]
+                agent2 = agents[caddr]
                 if caddr in prev_collab_partners:
                     n = n_collab_partners[-1]
                     n_collab_partners.append(n)
@@ -670,8 +224,8 @@ def analyze_agent_collab_skills(dirs, path):
                 same_skills = agent[caddr]['intersection']
                 unique_skills = agent[caddr]['unique']
                 same_skills_all.append(len(same_skills))
-                other_has_various = any(
-                    [e in agents[caddr]['skills'] for e in var_funcs])
+                other_has_various = any([has_func(agent2, e) for e in var_funcs])
+                #print([has_func(agent, e) for e in var_funcs], [has_func(agent2, e) for e in var_funcs])
                 if caddr == pref_list[i][0] and collab_arts_dict['cinit'][i]:
                     same_skills_first.append(len(same_skills))
                 if collab_arts_dict['cinit'][i]:
@@ -690,6 +244,7 @@ def analyze_agent_collab_skills(dirs, path):
                             init_various_fb.append(1)
                         else:
                             none_various_fb.append(1)
+                        update_func_fbs(all_funcs, agent, agent2, 1)
 
                     fb += 1
                 else:
@@ -703,6 +258,7 @@ def analyze_agent_collab_skills(dirs, path):
                             init_various_fb.append(0)
                         else:
                             none_various_fb.append(0)
+                        update_func_fbs(all_funcs, agent, agent2, 0)
 
             n_collab_partners_rev_all.append(n_collab_partners_rev)
             n_collab_partners_all.append(n_collab_partners)
@@ -729,7 +285,7 @@ def analyze_agent_collab_skills(dirs, path):
             agent['various_collab_val_avg'] = np.mean(var_collab)
 
     print_agent_info_statistics(agent_info, both_various_fb, init_various_fb,
-                                other_various_fb, none_various_fb)
+                                other_various_fb, none_various_fb, all_funcs)
 
     mean_collab_partners = calculate_collab_partner_means(n_collab_partners_all)
     mean_collab_partners_rev = calculate_collab_partner_means(n_collab_partners_rev_all)
@@ -768,7 +324,7 @@ def analyze_agent_info(agent_info):
 
 
 def print_agent_info_statistics(agent_info, both_various_fb, init_various_fb,
-                                other_various_fb, none_various_fb):
+                                other_various_fb, none_various_fb, all_funcs):
 
     def get_all_info(agents, key, filter=None):
         if filter is not None:
@@ -785,6 +341,25 @@ def print_agent_info_statistics(agent_info, both_various_fb, init_various_fb,
         std = np.std (clist)
         conf_interval = ci(std, len(clist))
         return mean, std, conf_interval
+
+    def print_func(all_funcs, fname):
+        both_vars = get_list_measures(all_funcs[fname]['both_func_fb'])
+        init_vars = get_list_measures(all_funcs[fname]['init_func_fb'])
+        other_vars = get_list_measures(all_funcs[fname]['other_func_fb'])
+        none_vars = get_list_measures(all_funcs[fname]['none_func_fb'])
+        print(
+            "Mean collab success with both {}: {:.3f} (std: {:.3f}) CI99% +-{:.3f} (n={})".format(
+                fname, *both_vars, len(all_funcs[fname]['both_func_fb'])))
+        print(
+            "Mean collab success with init {}: {:.3f} (std: {:.3f}) CI99% +-{:.3f} (n={})".format(
+                fname, *init_vars, len(all_funcs[fname]['init_func_fb'])))
+        print(
+            "Mean collab success with other {}: {:.3f} (std: {:.3f}) CI99% +-{:.3f} (n={})".format(
+                fname, *other_vars, len(all_funcs[fname]['other_func_fb'])))
+        print(
+            "Mean collab success with none {}: {:.3f} (std: {:.3f}) CI99% +-{:.3f} (n={})".format(
+                fname, *none_vars, len(all_funcs[fname]['none_func_fb'])))
+
 
     all_agents = [list(agents.values()) for agents in agent_info.values()]
     all_agents = list(itertools.chain(*all_agents))
@@ -815,7 +390,10 @@ def print_agent_info_statistics(agent_info, both_various_fb, init_various_fb,
     print("Mean collab success with none various funcs: {:.3f} (std: {:.3f}) CI99% +-{:.3f} (n={})".format(
         *none_vars, len(none_various_fb)))
 
+    for fname in all_funcs.keys():
+        print_func(all_funcs, fname)
 
+    '''
     all_collab_vals = get_all_info(all_agents, key='all_collab_val')
     all_collab_vals_gcf = get_all_info(all_agents, key='all_collab_val', filter=('aesthetic', 'global_contrast_factor'))
     all_collab_vals_bl = get_all_info(all_agents, key='all_collab_val', filter=('aesthetic', 'benford'))
@@ -842,6 +420,7 @@ def print_agent_info_statistics(agent_info, both_various_fb, init_various_fb,
     print("Various collab val avg symm: {:.3f} (std: {:.3f}) CI99% +-{:.3f}".format(*var_collab_vals_symm))
     print("All collab val avg fda: {:.3f} (std: {:.3f}) CI99% +-{:.3f}".format(*all_collab_vals_fda))
     print("Various collab val avg fda: {:.3f} (std: {:.3f}) CI99% +-{:.3f}".format(*var_collab_vals_fda))
+    '''
 
 
 def analyze_collab_gp_runs(path, decimals=3, exclude=[]):

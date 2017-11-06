@@ -8,6 +8,9 @@ COLORS = sns.color_palette('colorblind')
 MODEL_ORDER = ['random', 'lr', 'Q1', 'Q2', 'Q3']
 AEST_ORDER = ['benford', 'entropy', 'global_contrast_factor', 'symm', 'fd_aesthetics']
 
+# Figure size for basic plots.
+BASE_FIG_SIZE = (4, 2.5)
+
 # Generic styles for learning schemes
 # Usage:
 # style = MODEL_STYLES['random']
