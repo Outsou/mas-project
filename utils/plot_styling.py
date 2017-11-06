@@ -30,7 +30,7 @@ MODEL_STYLES = {
         {'line style': '-',
          'label': 'Simple-Q',
          'color': COLORS[1],
-         'dashes': [1000000000]  # Continuous line
+         'dashes': []  # Continuous line
          },
     'Q2':
         {'line style': '--',
@@ -64,7 +64,7 @@ AEST_STYLES = {
         {'line style': '-',
          'label': 'Entropy',
          'color': COLORS[1],
-         'dashes': [1000000000]  # Continuous line
+         'dashes': []  # Continuous line
          },
     'global_contrast_factor':
         {'line style': '--',

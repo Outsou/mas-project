@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pandas.plotting import table
 import pandas as pd
+from utils.plot_styling import MODEL_STYLES, MODEL_ORDER
 
 
 def _average_arrays(stats, shape, key, sub_key=None):
@@ -573,6 +574,7 @@ def analyze_collab_evals(dirs):
             # Calculate collab success ratio for simulation run
             collab_ratios.append(len(collab_arts) / collab_attempts)
 
+
     collab_eval_stats['success_ratio'] = {'mean': np.mean(collab_ratios),
                                           'conf_int': st.t.interval(0.99, len(collab_ratios) - 1,
                                                                     loc=np.mean(collab_ratios),
@@ -782,6 +784,7 @@ def analyze_own_arts(dirs):
     own_art_stats['aest_means'] = aest_means
     return own_art_stats
 
+
 def analyze_model_dir(path):
     # Get directories of valid runs
     dirs = []
@@ -820,9 +823,13 @@ def get_cumulative_success_ratio(successes, step_attempts):
 
 def make_success_ratio_plot(ratio_dict, filename):
     """Creates a success ratio plot."""
-    for model, ratios in sorted(ratio_dict.items()):
+    mratios = sorted(ratio_dict.items(), key=lambda x: MODEL_ORDER.index(x[0]))
+
+    for model, ratios in mratios:
         steps = len(ratios) * 2
-        plt.plot(list(range(2, steps + 1, 2)), ratios, label=model)
+        style = MODEL_STYLES[model]
+        plt.plot(list(range(2, steps + 1, 2)), ratios, style['line style'],
+                     dashes=style['dashes'], label=style['label'], color=style['color'])
     plt.xlabel('step')
     plt.ylabel('success ratio')
     plt.legend()
@@ -888,9 +895,14 @@ def create_top_k_val_nov_plot(top_pick_stats, model):
 def create_val_nov_plot(step_pick_stat_dict):
     first_key = list(step_pick_stat_dict.keys())[0]
     x = list(range(2, len(step_pick_stat_dict[first_key]['all']['val']) * 2 + 1, 2))
+
+    models = sorted(step_pick_stat_dict.keys(), key=lambda x: MODEL_ORDER.index(x))
+
     for val in ['val', 'nov']:
-        for model in sorted(step_pick_stat_dict.keys()):
-            plt.plot(x, step_pick_stat_dict[model]['all'][val], label=model)
+        for model in models:
+            style = MODEL_STYLES[model]
+            plt.plot(x, step_pick_stat_dict[model]['all'][val], style['line style'],
+                     dashes=style['dashes'], label=style['label'], color=style['color'])
         plt.xlabel('step')
         plt.ylabel(val)
         plt.legend()
@@ -902,9 +914,13 @@ def create_solo_val_nov_plots(step_vals_novs_solo):
     first_key = list(step_vals_novs_solo.keys())[0]
     x = list(range(2, len(step_vals_novs_solo[first_key]['vals']) * 2 + 1, 2))
 
+    models = sorted(step_vals_novs_solo.keys(), key=lambda x: MODEL_ORDER.index(x))
+
     for val in ['vals', 'novs']:
-        for model in sorted(step_vals_novs_solo.keys()):
-            plt.plot(x, step_vals_novs_solo[model][val], label=model)
+        for model in models:
+            style = MODEL_STYLES[model]
+            plt.plot(x, step_vals_novs_solo[model][val], style['line style'],
+                     dashes=style['dashes'], label=style['label'], color=style['color'])
         plt.xlabel('step')
         plt.ylabel(val)
         plt.legend()
@@ -1006,11 +1022,92 @@ def make_aesthetic_rows(collab_eval_stats, own_art_stats, aest_rows, aest_first_
         eval_ratios[aest]['rand'].append(own_collab_eval)
         eval_ratios[aest]['rand_first'].append(first_choice_eval)
 
+
+def make_pair_count_bar_graph_all(pair_counts):
+    proportions = {}
+
+    # Get normalized proportions
+    for model, pairs in pair_counts.items():
+        proportions[model] = {}
+        proportions[model]['failed'] = []
+        proportions[model]['succeeded'] = []
+
+        total = 0
+        for pair, vals in pairs.items():
+            total += vals['succeeded'] + vals['failed']
+
+        pairs_sorted = sorted(pairs.items())
+
+        for _, vals in pairs_sorted:
+            proportions[model]['failed'].append(vals['failed'] / total)
+            proportions[model]['succeeded'].append(vals['succeeded'] / total)
+
+    # Make the graph
+    proportions_sorted = sorted(proportions.items(), key=lambda x: MODEL_ORDER.index(x[0]))
+    N = len(proportions_sorted[0][1]['succeeded'])
+    ind = np.arange(N)
+    width = 0.18
+    fig, ax = plt.subplots()
+    i = 0
+
+    for model, proportions in proportions_sorted:
+        ax.bar(ind + width * i, proportions['succeeded'], width, label=MODEL_STYLES[model]['label'])
+        ax.bar(ind + width * i, proportions['failed'], width, bottom=proportions['succeeded'], color='red')
+        i += 1
+    ax.set_xticks(ind + width * 2)
+    ax.set_xticklabels([x[0] for x in pairs_sorted], rotation='vertical')
+
+    # for model, proportions in proportions_sorted:
+    #     ax.barh(ind + width * i, proportions['succeeded'], width, label=MODEL_STYLES[model]['label'])
+    #     ax.barh(ind + width * i, proportions['failed'], width, left=proportions['succeeded'], color='red')
+    #     i += 1
+    # ax.set_yticks(ind + width * 2)
+    # ax.set_yticklabels([x[0] for x in pairs_sorted])
+    # ax.invert_yaxis()
+
+    plt.legend()
+    plt.tight_layout()
+
+    plt.show()
+
+
+def make_pair_count_bar_graph(pair_counts, model):
+    failed_counts = []
+    succeeded_counts = []
+
+    for pair, counts in sorted(pair_counts.items()):
+        failed_counts.append(counts['failed'])
+        succeeded_counts.append(counts['succeeded'])
+
+    failed_counts = np.array(failed_counts)
+    succeeded_counts = np.array(succeeded_counts)
+    total = np.sum(failed_counts) + np.sum(succeeded_counts)
+    failed_counts /= total
+    succeeded_counts /= total
+
+    fail_success = zip(failed_counts, succeeded_counts)
+
+    counts_sorted = sorted(fail_success, key=lambda x: x[0] + x[1], reverse=True)
+    fails_sorted, succeeded_sorted = zip(*counts_sorted)
+
+    ind = np.arange(len(counts_sorted))
+    p1 = plt.bar(ind, succeeded_sorted, tick_label='', edgecolor='black')
+    p2 = plt.bar(ind, fails_sorted, tick_label='', edgecolor='black', bottom=succeeded_sorted)
+    plt.ylabel('Proportion of pair')
+    plt.xlabel('Pair')
+    plt.ylim(0, 0.18)
+    plt.title('{} aesthetic pair proportions.'.format(MODEL_STYLES[model]['label']))
+    plt.legend((p1[0], p2[0]), ('succeeded', 'failed'))
+    plt.savefig('{}_pair_diversity.png'.format(model))
+    plt.close()
+
+
 def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     """The main function to call when analyzing runs."""
-    sns.set(color_codes=True)
-    sns.set_context("paper")
+    sns.set()
     sns.set_style("white")
+    sns.set_context("paper")
+
     model_dirs = sorted(get_dirs_in_dir(path))
     format_s = '%.{}f'.format(decimals)
 
@@ -1043,6 +1140,7 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     step_pick_stat_dict = {}
     step_vals_novs_solo = {}
     eval_ratios = {}
+    pair_counts = {}
 
     for model_dir in model_dirs:
         model = os.path.split(model_dir)[1]
@@ -1122,6 +1220,12 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         step_vals_novs_solo[model]['vals'] = own_art_stats['step_vals']
         step_vals_novs_solo[model]['novs'] = own_art_stats['step_novs']
 
+        # Make pair count histogram
+        make_pair_count_bar_graph(collab_art_stats['aesthetic_pairs'], model)
+        pair_counts[model] = collab_art_stats['aesthetic_pairs']
+
+
+    make_pair_count_bar_graph_all(pair_counts)
 
     # Calculate own collab eval ratios w.r.t random
     for aest in eval_ratios.keys():
