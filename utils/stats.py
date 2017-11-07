@@ -280,6 +280,7 @@ def create_param_graph(avgs_folder, save_folder, param_name, param_vals, models)
     plt.xlabel(param_name)
     plt.ylabel('Reward %')
     plt.savefig(os.path.join(save_folder, '{}.png'.format(param_name)))
+    plt.savefig(os.path.join(save_folder, '{}.pdf'.format(param_name)))
     plt.close()
 
 
@@ -889,6 +890,7 @@ def create_top_k_val_nov_plot(top_pick_stats, model):
         plt.legend()
         plt.ylim(0.4, 0.7)
         plt.savefig('{}_{}_top_picks.png'.format(model, val))
+        plt.savefig('{}_{}_top_picks.pdf'.format(model, val))
         plt.close()
 
 
@@ -908,6 +910,7 @@ def create_val_nov_plot(step_pick_stat_dict):
         plt.legend()
         plt.ylim(0.4, 0.7)
         plt.savefig('{}_collab.png'.format(val))
+        plt.savefig('{}_collab.pdf'.format(val))
         plt.close()
 
 def create_solo_val_nov_plots(step_vals_novs_solo):
@@ -925,6 +928,7 @@ def create_solo_val_nov_plots(step_vals_novs_solo):
         plt.ylabel(val)
         plt.legend()
         plt.savefig('{}_solo.png'.format(val))
+        plt.savefig('{}_solo.pdf'.format(val))
         plt.close()
 
 
@@ -1099,6 +1103,7 @@ def make_pair_count_bar_graph(pair_counts, model):
     plt.title('{} aesthetic pair proportions.'.format(MODEL_STYLES[model]['label']))
     plt.legend((p1[0], p2[0]), ('succeeded', 'failed'))
     plt.savefig('{}_pair_diversity.png'.format(model))
+    plt.savefig('{}_pair_diversity.pdf'.format(model))
     plt.close()
 
 
@@ -1254,9 +1259,12 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
 
     # Make cumulative success ratio plot
     make_success_ratio_plot(cumulative_successes, 'cumulative_success_ratios.png')
+    make_success_ratio_plot(cumulative_successes,
+                            'cumulative_success_ratios.pdf')
 
     # Make non-cumulative success ratio plot
     make_success_ratio_plot(step_success_ratios, 'success_ratios.png')
+    make_success_ratio_plot(step_success_ratios, 'success_ratios.pdf')
 
     # Make value and novelty collab plots
     create_val_nov_plot(step_pick_stat_dict)

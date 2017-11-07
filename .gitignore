@@ -86,5 +86,6 @@ screenlog.*
 *.pkl
 runs_old/
 *.tar.gz
+*.pdf
 
 tnovelty.py
