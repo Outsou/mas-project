@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pandas.plotting import table
 import pandas as pd
-from utils.plot_styling import MODEL_STYLES, MODEL_ORDER
+from utils.plot_styling import MODEL_STYLES, MODEL_ORDER, BASE_FIG_SIZE
 
 
 def _average_arrays(stats, shape, key, sub_key=None):
@@ -822,18 +822,23 @@ def get_cumulative_success_ratio(successes, step_attempts):
         cum_ratios.append(sum(successes[:i+1]) / attempts)
     return cum_ratios
 
-def make_success_ratio_plot(ratio_dict, filename):
+def make_success_ratio_plot(ratio_dict, filename, x=None):
     """Creates a success ratio plot."""
     mratios = sorted(ratio_dict.items(), key=lambda x: MODEL_ORDER.index(x[0]))
 
     for model, ratios in mratios:
-        steps = len(ratios) * 2
+        if x is None:
+            steps = len(ratios) * 2
+            x = list(range(2, steps + 1, 2))
         style = MODEL_STYLES[model]
-        plt.plot(list(range(2, steps + 1, 2)), ratios, style['line style'],
+        plt.plot(x, ratios, style['line style'],
                      dashes=style['dashes'], label=style['label'], color=style['color'])
     plt.xlabel('step')
     plt.ylabel('success ratio')
     plt.legend()
+    fig = plt.gcf()
+    fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
+    plt.tight_layout()
     plt.savefig(filename)
     plt.close()
 
@@ -889,29 +894,38 @@ def create_top_k_val_nov_plot(top_pick_stats, model):
         plt.ylabel(val)
         plt.legend()
         plt.ylim(0.4, 0.7)
+        fig = plt.gcf()
+        fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
+        plt.tight_layout()
         plt.savefig('{}_{}_top_picks.png'.format(model, val))
         plt.savefig('{}_{}_top_picks.pdf'.format(model, val))
         plt.close()
 
 
-def create_val_nov_plot(step_pick_stat_dict):
+def create_val_nov_plot(step_pick_stat_dict, mean_solo_vals):
     first_key = list(step_pick_stat_dict.keys())[0]
     x = list(range(2, len(step_pick_stat_dict[first_key]['all']['val']) * 2 + 1, 2))
-
     models = sorted(step_pick_stat_dict.keys(), key=lambda x: MODEL_ORDER.index(x))
-
     for val in ['val', 'nov']:
+        if val == 'val':
+            plt.plot(x[1:], mean_solo_vals[1:], '--o', alpha=0.25, label='Solo mean', markevery=10, color='k')
+
         for model in models:
             style = MODEL_STYLES[model]
             plt.plot(x, step_pick_stat_dict[model]['all'][val], style['line style'],
                      dashes=style['dashes'], label=style['label'], color=style['color'])
+
         plt.xlabel('step')
         plt.ylabel(val)
         plt.legend()
         plt.ylim(0.4, 0.7)
+        fig = plt.gcf()
+        fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
+        plt.tight_layout()
         plt.savefig('{}_collab.png'.format(val))
         plt.savefig('{}_collab.pdf'.format(val))
         plt.close()
+
 
 def create_solo_val_nov_plots(step_vals_novs_solo):
     first_key = list(step_vals_novs_solo.keys())[0]
@@ -927,6 +941,9 @@ def create_solo_val_nov_plots(step_vals_novs_solo):
         plt.xlabel('step')
         plt.ylabel(val)
         plt.legend()
+        fig = plt.gcf()
+        fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
+        plt.tight_layout()
         plt.savefig('{}_solo.png'.format(val))
         plt.savefig('{}_solo.pdf'.format(val))
         plt.close()
@@ -1107,6 +1124,25 @@ def make_pair_count_bar_graph(pair_counts, model):
     plt.close()
 
 
+def smooth_success_ratios(success_ratios, window=2):
+    random_model = list(success_ratios.keys())[0]
+    length = len(success_ratios[random_model])
+
+    smoothed_ratios = {}
+    idx = np.array(range(0, length, window))
+
+    for model in success_ratios.keys():
+        smoothed_ratios[model] = []
+        for i in idx:
+            vals = success_ratios[model][i:i+window]
+            smoothed_ratios[model].append(np.mean(vals))
+
+    x = idx + window
+    if x[-1] >= length:
+        x[-1] = length - 1
+
+    return smoothed_ratios, x
+
 def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     """The main function to call when analyzing runs."""
     sns.set()
@@ -1225,12 +1261,12 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         step_vals_novs_solo[model]['vals'] = own_art_stats['step_vals']
         step_vals_novs_solo[model]['novs'] = own_art_stats['step_novs']
 
-        # Make pair count histogram
+        # Make pair count bar graph
         make_pair_count_bar_graph(collab_art_stats['aesthetic_pairs'], model)
         pair_counts[model] = collab_art_stats['aesthetic_pairs']
 
 
-    make_pair_count_bar_graph_all(pair_counts)
+    # make_pair_count_bar_graph_all(pair_counts)
 
     # Calculate own collab eval ratios w.r.t random
     for aest in eval_ratios.keys():
@@ -1262,12 +1298,23 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     make_success_ratio_plot(cumulative_successes,
                             'cumulative_success_ratios.pdf')
 
-    # Make non-cumulative success ratio plot
-    make_success_ratio_plot(step_success_ratios, 'success_ratios.png')
-    make_success_ratio_plot(step_success_ratios, 'success_ratios.pdf')
 
-    # Make value and novelty collab plots
-    create_val_nov_plot(step_pick_stat_dict)
+    smoothed_ratios, x = smooth_success_ratios(step_success_ratios, window=3)
+    # Make non-cumulative success ratio plot
+    make_success_ratio_plot(smoothed_ratios, 'success_ratios.png', x=x)
+    make_success_ratio_plot(smoothed_ratios, 'success_ratios.pdf', x=x)
 
     # Make value and novelty solo plots
     create_solo_val_nov_plots(step_vals_novs_solo)
+
+    # Take mean of model solo vals
+    length = len(step_vals_novs_solo[list(step_vals_novs_solo.keys())[0]]['vals'])
+    mean_solo_vals = np.zeros(length)
+    for vals in step_vals_novs_solo.values():
+        mean_solo_vals += vals['vals']
+    mean_solo_vals /= len(step_vals_novs_solo)
+
+    # Make value and novelty collab plots
+    create_val_nov_plot(step_pick_stat_dict, mean_solo_vals)
+
+
