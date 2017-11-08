@@ -7,6 +7,7 @@ COLORS = sns.color_palette('colorblind')
 # Order legends using these
 MODEL_ORDER = ['random', 'lr', 'Q1', 'Q2', 'Q3']
 AEST_ORDER = ['benford', 'entropy', 'global_contrast_factor', 'symm', 'fd_aesthetics']
+AEST_SHORT_LABELS = ['BLW', 'ENT', 'GCF', 'SYM', 'FRD']
 
 # Figure size for basic plots.
 BASE_FIG_SIZE = (4, 2.5)
