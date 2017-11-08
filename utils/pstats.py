@@ -23,6 +23,8 @@ from utils.plot_styling import MODEL_STYLES, MODEL_ORDER, BASE_FIG_SIZE, AEST_SH
 SHARED_SKILLS = ['mul', 'safe_div', 'add', 'sub', 'safe_mod']
 SKILLS = list(primitives.keys())
 
+skill_regexs = {s: re.compile(s) for s in SKILLS}
+
 
 def ci(std, n, conf=99):
     if conf == 99:
@@ -104,7 +106,11 @@ def analyze_model_dir(path):
     for line in lines:
         if 'Run finished' in line:
             dirs.append(line.split(': ')[0])
-    return analyze_agent_collab_skills(dirs, path)
+    agent_info = get_agent_infos(dirs)
+    analyze_agent_info(agent_info)
+    analyze_artifact_skills(dirs, path, agent_info)
+    #rets = analyze_agent_collab_skills(dirs, path, agent_info)
+    return None, None, None
 
 
 def get_agent_infos(dirs):
@@ -144,12 +150,110 @@ def has_func(agent, func_name):
     return func_name in agent['skills']
 
 
-def analyze_agent_collab_skills(dirs, path):
+def get_artifact_funcs(func_str):
+    s = []
+    count = 0
+    for skill, regex in skill_regexs.items():
+        if regex.search(func_str) is not None:
+            s.append(skill)
+            ret = regex.findall(func_str)
+            count += len(ret)
+
+    return s, count
+
+
+def get_all_artifact_funcs(sub_dir):
+    own_funcs = []
+    collab_funcs = []
+
+    fls = [e for e in os.listdir(sub_dir) if os.path.isfile(os.path.join(sub_dir, e))]
+    for fl in fls:
+        if fl[-3:] == 'txt':
+            with open(os.path.join(sub_dir, fl), 'r') as f:
+                func_str = f.read().strip()
+                if len(fl.split("-")) == 2:
+                    collab_funcs.append(func_str)
+                else:
+                    own_funcs.append(func_str)
+    return own_funcs, collab_funcs
+
+
+def analyze_artifact_funcs(funcs, agent_skills=None):
+    skills = []
+    skill_counts = []
+    askills = []
+    for f in funcs:
+        s, count = get_artifact_funcs(f)
+        skills.append(s)
+        #print(len(s), s)
+        skill_counts.append(count)
+        if agent_skills is not None:
+            sg = []
+            for g in agent_skills:
+                if g in s:
+                    sg.append(g)
+            askills.append(sg)
+    return skills, skill_counts, askills
+
+
+def get_agent_dicts(sub_dir):
+    collab_pkl = 'collab_arts.pkl'
+    own_pkl = 'own_arts.pkl'
+    gi_pkl = 'general_info.pkl'
+    with open(os.path.join(sub_dir, collab_pkl), 'rb') as pkl:
+        collab_arts_dict = pickle.load(pkl)
+    with open(os.path.join(sub_dir, own_pkl), 'rb') as pkl:
+        own_arts_dict = pickle.load(pkl)
+    with open(os.path.join(sub_dir, gi_pkl), 'rb') as pkl:
+        general_info_dict = pickle.load(pkl)
+    return collab_arts_dict, own_arts_dict, general_info_dict
+
+
+def analyze_artifact_skills(dirs, path, agent_info):
+
+    def get_mean_std(l):
+        return np.mean(l), np.std(l)
+
+    all_funcs = list(primitives.keys())
+    all_own_skills = []
+    all_own_skill_counts = []
+    all_col_skills = []
+    all_col_skill_counts = []
+    all_agent_skills = []
+
+    for dir in dirs:
+        agents = agent_info[dir]
+        pref_lists = pickle.load(open(os.path.join(dir, 'pref_lists.pkl'), 'rb'))
+        sub_dirs = get_dirs_in_dir(dir)
+        for sub_dir in sub_dirs:
+            collab_arts_dict, own_arts_dict, gi = get_agent_dicts(sub_dir)
+            agent = agents[gi['addr']]
+            pref_list = pref_lists[gi['addr']]
+            own_funcs, collab_funcs = get_all_artifact_funcs(sub_dir)
+            own_skills, own_skill_counts, _ = analyze_artifact_funcs(own_funcs)
+            #print(len(agent['skills']), agent['skills'])
+            col_skills, col_skill_counts, agent_skills = analyze_artifact_funcs(collab_funcs, agent['skills'])
+            all_own_skills.extend(own_skills)
+            all_own_skill_counts.extend(own_skill_counts)
+            all_col_skills.extend(col_skills)
+            all_col_skill_counts.extend(col_skill_counts)
+            all_agent_skills.extend(agent_skills)
+
+    mos, sos = get_mean_std([len(s) for s in all_own_skills])
+    mosc, sosc = get_mean_std([s for s in all_own_skill_counts])
+    mcs, scs = get_mean_std([len(s) for s in all_col_skills])
+    mcsc, scsc = get_mean_std([s for s in all_col_skill_counts])
+    mas, sas = get_mean_std([len(s) for s in all_agent_skills])
+    print("Mean own skills: {:.3f}, std: {:.3f}  ({:.3f})".format(mos, sos, mosc))
+    print("Mean col skills: {:.3f} std: {:.3f} ({:.3f})".format(mcs, scs, mcsc))
+    print("Mean agent skills in col: {:.3f} std: {:.3f}".format(mas, sas))
+
+
+
+def analyze_agent_collab_skills(dirs, path, agent_info):
     """Analyze the effect of agent skills on the collaboration results.
     """
     pkl_name = 'collab_arts.pkl'
-    agent_info = get_agent_infos(dirs)
-    analyze_agent_info(agent_info)
     var_funcs = ['perlin1', 'perlin2', 'simplex2', 'plasma']
     all_funcs = {e: {'both_func_fb': [], 'init_func_fb': [], 'other_func_fb': [], 'none_func_fb': []} for e in list(primitives.keys())}
     both_various_fb = []
@@ -310,8 +414,6 @@ def compute_mean_selections(all_collab_selections):
     return means
 
 
-
-
 def create_aesthetic_collab_heatmap(collab_selections):
     sns.set_style("white")
     sns.set_context("paper")
@@ -357,8 +459,6 @@ def create_aesthetic_collab_heatmap(collab_selections):
     plt.tight_layout()
     plt.savefig("Q123_aest_collabs_heatmap.pdf".format(model))
     plt.close()
-
-
 
 
 def analyze_agent_info(agent_info):
@@ -516,7 +616,6 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=[]):
         means[model] = cumulative_collab_partner_means
         means_rev[model] = cumulative_collab_partners_rev_means
         c_selections[model] = collab_selections
-        print(np.min(collab_selections), np.max(collab_selections))
         print("***************************************************\n")
 
     create_aesthetic_collab_heatmap(c_selections)

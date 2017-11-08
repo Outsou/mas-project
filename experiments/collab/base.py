@@ -545,7 +545,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                   "finalize collab with {}".format(self.addr, self.caddr))
         self.evaluate_population(pop)
         arts1 = self.hof2arts(self.collab_hof)
-        best, ranking = choose_best(hof_arts, arts1, epsilon=0.02)
+        best, ranking = choose_best(hof_arts, arts1, epsilon=0.00)
         return best, ranking
 
     async def collab_first_iter(self, population, iter):
