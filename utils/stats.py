@@ -400,50 +400,61 @@ def get_step_top_values(collab_evals, pref_lists, collab_steps, other_vals=False
         step = int(collab_art[:5])
         idx = int(step / 2 - 1)
         creators = stats['creator'].split(' - ')
+        initializer = creators[0]
+        other = creators[1]
 
-        for creator in creators:
-            other = [agent for agent in creators if agent != creator][0]
+        if other_vals:
+            val_agent = other
+            other_agent = initializer
+        else:
+            val_agent = initializer
+            other_agent = other
 
-            if other_vals:
-                val_agent = other
-            else:
-                val_agent = creator
+        eval = collab_evals[collab_art][val_agent][0]
+        val = collab_evals[collab_art][val_agent][1]['value']
+        nov = collab_evals[collab_art][val_agent][1]['novelty']
 
-            eval = collab_evals[collab_art][val_agent][0]
-            val = collab_evals[collab_art][val_agent][1]['value']
-            nov = collab_evals[collab_art][val_agent][1]['novelty']
+        other_eval = collab_evals[collab_art][other_agent][0]
+        other_val = collab_evals[collab_art][other_agent][1]['value']
+        other_nov = collab_evals[collab_art][other_agent][1]['novelty']
 
-            pref_list = pref_lists[creator][idx]
-            aest = collab_evals[collab_art][creator][1]['aesthetic']
+        pref_list = pref_lists[initializer][idx]
+        aest = collab_evals[collab_art][initializer][1]['aesthetic']
 
 
-            if aest not in aesthetic_top:
-                aesthetic_top[aest] = {}
-                for k in top_k:
-                    aesthetic_top[aest][str(k)] = {'eval': [],
-                                                   'val': [],
-                                                   'nov': []}
-                aesthetic_top[aest]['all'] = {'eval': [],
-                                              'val': [],
-                                              'nov': []}
-
+        if aest not in aesthetic_top:
+            aesthetic_top[aest] = {}
             for k in top_k:
-                if other in pref_list[:k]:
-                    top[str(k)]['eval'][idx].append(eval)
-                    top[str(k)]['val'][idx].append(val)
-                    top[str(k)]['nov'][idx].append(nov)
+                aesthetic_top[aest][str(k)] = {'eval': [],
+                                               'val': [],
+                                               'nov': []}
+            aesthetic_top[aest]['all'] = {'eval': [],
+                                          'val': [],
+                                          'nov': []}
 
-                    aesthetic_top[aest][str(k)]['eval'].append(eval)
-                    aesthetic_top[aest][str(k)]['val'].append(val)
-                    aesthetic_top[aest][str(k)]['nov'].append(nov)
+        for k in top_k:
+            if other in pref_list[:k]:
+                top[str(k)]['eval'][idx].append(eval)
+                top[str(k)]['val'][idx].append(val)
+                top[str(k)]['nov'][idx].append(nov)
 
-            top['all']['eval'][idx].append(eval)
-            top['all']['val'][idx].append(val)
-            top['all']['nov'][idx].append(nov)
+                aesthetic_top[aest][str(k)]['eval'].append(eval)
+                aesthetic_top[aest][str(k)]['val'].append(val)
+                aesthetic_top[aest][str(k)]['nov'].append(nov)
 
-            aesthetic_top[aest]['all']['eval'].append(eval)
-            aesthetic_top[aest]['all']['val'].append(val)
-            aesthetic_top[aest]['all']['nov'].append(nov)
+        top['all']['eval'][idx].append(eval)
+        top['all']['val'][idx].append(val)
+        top['all']['nov'][idx].append(nov)
+        top['all']['eval'][idx].append(other_eval)
+        top['all']['val'][idx].append(other_val)
+        top['all']['nov'][idx].append(other_nov)
+
+        aesthetic_top[aest]['all']['eval'].append(eval)
+        aesthetic_top[aest]['all']['val'].append(val)
+        aesthetic_top[aest]['all']['nov'].append(nov)
+        aesthetic_top[aest]['all']['eval'].append(other_eval)
+        aesthetic_top[aest]['all']['val'].append(other_val)
+        aesthetic_top[aest]['all']['nov'].append(other_nov)
     return top, aesthetic_top
 
 
