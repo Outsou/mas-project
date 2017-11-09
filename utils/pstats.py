@@ -109,8 +109,8 @@ def analyze_model_dir(path):
     agent_info = get_agent_infos(dirs)
     analyze_agent_info(agent_info)
     analyze_artifact_skills(dirs, path, agent_info)
-    #rets = analyze_agent_collab_skills(dirs, path, agent_info)
-    return None, None, None
+    rets = analyze_agent_collab_skills(dirs, path, agent_info)
+    return rets
 
 
 def get_agent_infos(dirs):
@@ -162,7 +162,7 @@ def get_artifact_funcs(func_str):
     return s, count
 
 
-def get_all_artifact_funcs(sub_dir):
+def get_all_artifact_funcs(sub_dir, agent_skills, agents):
     own_funcs = []
     collab_funcs = []
 
@@ -172,28 +172,36 @@ def get_all_artifact_funcs(sub_dir):
             with open(os.path.join(sub_dir, fl), 'r') as f:
                 func_str = f.read().strip()
                 if len(fl.split("-")) == 2:
-                    collab_funcs.append(func_str)
+                    c = fl.split("-")[1]
+                    caddr = "{}://{}:{}/{}".format(*c.split("_")[:4])
+                    oskills = agents[caddr]['skills']
+                    #print(caddr, oskills)
+                    ret = analyze_artifact_func(func_str, agent_skills, oskills)
+                    collab_funcs.append(ret)
                 else:
-                    own_funcs.append(func_str)
+                    ret = analyze_artifact_func(func_str, None, None)
+                    own_funcs.append(ret[:2])
     return own_funcs, collab_funcs
 
 
-def analyze_artifact_funcs(funcs, agent_skills=None):
-    skills = []
-    skill_counts = []
-    askills = []
-    for f in funcs:
-        s, count = get_artifact_funcs(f)
-        skills.append(s)
-        #print(len(s), s)
-        skill_counts.append(count)
-        if agent_skills is not None:
-            sg = []
-            for g in agent_skills:
-                if g in s:
-                    sg.append(g)
-            askills.append(sg)
-    return skills, skill_counts, askills
+def analyze_artifact_func(func, agent_skills=None, other_skills=None):
+    askills = None
+    oskills = None
+    s, count = get_artifact_funcs(func)
+    # print(len(s), s)
+    if agent_skills is not None:
+        sg = []
+        for g in agent_skills:
+            if g in s:
+                sg.append(g)
+        askills = sg
+    if other_skills is not None:
+        og = []
+        for g in other_skills:
+            if g in s:
+                og.append(g)
+        oskills = og
+    return s, count, askills, oskills
 
 
 def get_agent_dicts(sub_dir):
@@ -220,6 +228,7 @@ def analyze_artifact_skills(dirs, path, agent_info):
     all_col_skills = []
     all_col_skill_counts = []
     all_agent_skills = []
+    all_other_skills = []
 
     for dir in dirs:
         agents = agent_info[dir]
@@ -229,25 +238,27 @@ def analyze_artifact_skills(dirs, path, agent_info):
             collab_arts_dict, own_arts_dict, gi = get_agent_dicts(sub_dir)
             agent = agents[gi['addr']]
             pref_list = pref_lists[gi['addr']]
-            own_funcs, collab_funcs = get_all_artifact_funcs(sub_dir)
-            own_skills, own_skill_counts, _ = analyze_artifact_funcs(own_funcs)
+            own_funcs, collab_funcs = get_all_artifact_funcs(sub_dir, agent['skills'], agents)
+            own_skills, own_skill_counts = zip(*own_funcs)
             #print(len(agent['skills']), agent['skills'])
-            col_skills, col_skill_counts, agent_skills = analyze_artifact_funcs(collab_funcs, agent['skills'])
+            col_skills, col_skill_counts, agent_skills, other_skills = zip(*collab_funcs)
             all_own_skills.extend(own_skills)
             all_own_skill_counts.extend(own_skill_counts)
             all_col_skills.extend(col_skills)
             all_col_skill_counts.extend(col_skill_counts)
             all_agent_skills.extend(agent_skills)
+            all_other_skills.extend(other_skills)
 
     mos, sos = get_mean_std([len(s) for s in all_own_skills])
     mosc, sosc = get_mean_std([s for s in all_own_skill_counts])
     mcs, scs = get_mean_std([len(s) for s in all_col_skills])
     mcsc, scsc = get_mean_std([s for s in all_col_skill_counts])
     mas, sas = get_mean_std([len(s) for s in all_agent_skills])
+    maos, saos = get_mean_std([len(s) for s in all_other_skills])
     print("Mean own skills: {:.3f}, std: {:.3f}  ({:.3f})".format(mos, sos, mosc))
     print("Mean col skills: {:.3f} std: {:.3f} ({:.3f})".format(mcs, scs, mcsc))
     print("Mean agent skills in col: {:.3f} std: {:.3f}".format(mas, sas))
-
+    print("Mean other skills in col: {:.3f} std: {:.3f}".format(maos, saos))
 
 
 def analyze_agent_collab_skills(dirs, path, agent_info):

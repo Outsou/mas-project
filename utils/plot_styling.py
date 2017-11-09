@@ -35,7 +35,7 @@ MODEL_STYLES = {
          },
     'Q2':
         {'line style': '--',
-         'label': 'Hedonistic-Q',
+         'label': 'Hedonic-Q',
          'color': COLORS[2],
          'dashes': [5, 2]
          },
