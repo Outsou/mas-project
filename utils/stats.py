@@ -419,7 +419,7 @@ def get_step_top_values(collab_evals, pref_lists, collab_steps, other_vals=False
         other_nov = collab_evals[collab_art][other_agent][1]['novelty']
 
         pref_list = pref_lists[initializer][idx]
-        aest = collab_evals[collab_art][initializer][1]['aesthetic']
+        aest = collab_evals[collab_art][val_agent][1]['aesthetic']
 
 
         if aest not in aesthetic_top:
@@ -1018,7 +1018,7 @@ def make_aest_val_table_and_image(own_art_stats, ind_eval_stats, pairs, collab_e
 def make_aesthetic_rows(collab_eval_stats, own_art_stats, aest_rows, aest_first_choice_rows, eval_ratios, format_s):
     for aest in collab_eval_stats['aest_top_pick_stats']:
         if aest not in eval_ratios:
-            eval_ratios[aest] = {'rand': [], 'first': [], 'rand_first': [], 'first ': []}
+            eval_ratios[aest] = {'rand': [], 'first': [], 'rand_first': [], 'first ': [], 'other': []}
 
         if aest not in aest_rows:
             aest_rows[aest] = [['{} own collab eval'.format(aest)],
@@ -1051,10 +1051,12 @@ def make_aesthetic_rows(collab_eval_stats, own_art_stats, aest_rows, aest_first_
         for i in range(len(col_vals)):
             aest_first_choice_rows[aest][i].append(col_vals[i])
 
-        eval_ratios[aest]['first'].append(own_collab_val / first_choice_val)
+        eval_ratios[aest]['first'].append(first_choice_val / own_collab_val)
         eval_ratios[aest]['rand'].append(own_collab_val)
         eval_ratios[aest]['rand_first'].append(first_choice_val)
-        eval_ratios[aest]['first '].append(own_solo_val / first_choice_val)
+        eval_ratios[aest]['first '].append(first_choice_val / own_solo_val)
+        eval_ratios[aest]['other'].append(collab_eval_stats['aest_top_pick_stats_other'][aest]['1']['val'] /
+                                          own_solo_val)
 
 
 def make_pair_count_bar_graph_all(pair_counts):
@@ -1296,11 +1298,12 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         for row in aest_first_choice_rows[aest]:
             rows.append(row)
 
-    for ratio in [('own', 'rand'), ('own', 'first'), ('first', 'rand_first'), ('solo own', 'first ')]:
+    for ratio in [('own/rand', 'rand'), ('first/own', 'first'), ('first/rand_first', 'rand_first'),
+                  ('first/solo own', 'first '), ('first partner\'s/solo own', 'other')]:
         nominator = ratio[0]
         denominator = ratio[1]
         for aest in sorted_aest:
-            row = ['{} {}/{} '.format(aest, nominator, denominator)] + eval_ratios[aest][denominator]
+            row = ['{} {} '.format(aest, nominator)] + eval_ratios[aest][denominator]
             row = [format_s % val if type(val) in [float, np.float64] else val for val in row]
             rows.append(row)
 
