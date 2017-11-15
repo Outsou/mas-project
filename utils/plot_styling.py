@@ -29,7 +29,7 @@ MODEL_STYLES = {
          },
     'Q1':
         {'line style': '-',
-         'label': 'Simple-Q',
+         'label': 'Direct-Q',
          'color': COLORS[1],
          'dashes': []  # Continuous line
          },
