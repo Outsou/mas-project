@@ -445,9 +445,9 @@ def get_step_top_values(collab_evals, pref_lists, collab_steps, other_vals=False
         top['all']['eval'][idx].append(eval)
         top['all']['val'][idx].append(val)
         top['all']['nov'][idx].append(nov)
-        top['all']['eval'][idx].append(other_eval)
-        top['all']['val'][idx].append(other_val)
-        top['all']['nov'][idx].append(other_nov)
+        # top['all']['eval'][idx].append(other_eval)
+        # top['all']['val'][idx].append(other_val)
+        # top['all']['nov'][idx].append(other_nov)
 
         aesthetic_top[aest]['all']['eval'].append(eval)
         aesthetic_top[aest]['all']['val'].append(val)
@@ -1172,6 +1172,8 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
             ['Evaluation of own collab artifacts'],
             ['Evaluation of own solo artifacts'],
             ['Value of own collab artifacts'],
+            ['Initializers value of collab artifacts'],
+            ['Partners value of collab artifacts'],
             ['Value of own solo artifacts'],
             #['Novelty of own collab artifacts'],
             #['Novelty of own solo artifacts'],
@@ -1214,11 +1216,18 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         conf_int = (format_s % conf_int[0], format_s % conf_int[1])
 
         # Add column to main table
+        init_val = collab_eval_stats['top_pick_stats']['all']['val_mean']
+        partner_val = collab_eval_stats['top_pick_stats_other']['all']['val_mean']
+        collab_eval = (collab_eval_stats['top_pick_stats']['all']['eval_mean'] +
+                       collab_eval_stats['top_pick_stats_other']['all']['eval_mean']) / 2
+
         col_vals = [collab_eval_stats['success_ratio']['mean'],
                     (conf_int),
-                    collab_eval_stats['top_pick_stats']['all']['eval_mean'],
+                    collab_eval,
                     own_art_stats['avg_eval'],
-                    collab_eval_stats['top_pick_stats']['all']['val_mean'],
+                    (init_val + partner_val) / 2,
+                    init_val,
+                    partner_val,
                     own_art_stats['avg_val'],
                     #collab_eval_stats['top_pick_stats']['all']['nov_mean'],
                     #own_art_stats['avg_nov'],
