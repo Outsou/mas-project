@@ -22,7 +22,11 @@ def resave_folder(folder, cm_name='viridis', shape=(1000, 1000)):
     for fname in d:
         fpath = os.path.join(folder, fname)
         if fpath[-3:] == 'txt':
-            if fname.startswith('f'):
+            png_name = "{}_{}_{}x{}.png".format(fname[:-4], cm_name, shape[0], shape[1])
+            #print(png_name)
+            if png_name in d:
+                print("Already found {}, skipping.".format(png_name))
+            elif fname.startswith('f'):
                 print("Resaving {} as {}".format(fpath, shape))
                 resave(fpath, cm_name, shape)
 

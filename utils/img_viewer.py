@@ -7,6 +7,7 @@ import argparse
 from tkinter import *
 from PIL import ImageTk, Image
 
+
 class ImageViewer(object):
 
     def __init__(self, root, folder, save_folder, resave_size=None):
@@ -66,6 +67,9 @@ class ImageViewer(object):
         self.next_agent_button = Button(self.button_frame, text="Next Agent",
                                  command=self.next_agent)
         self.next_agent_button.grid(column=3, row=0, padx=2, pady=0, ipady=5, ipadx=5)
+        self.next_run_button = Button(self.button_frame, text="Next Run",
+                                 command=self.next_run)
+        self.next_run_button.grid(column=4, row=0, padx=2, pady=0, ipady=5, ipadx=5)
 
         self.root.bind('<Left>', self.prev_image)
         self.root.bind('<Right>', self.next_image)
@@ -92,7 +96,7 @@ class ImageViewer(object):
                 return "FRD"
 
         folder_name = os.path.split(self._current_folder)[-1].split("_")
-        agent_name = "{}:{}".format(folder_name[-2], folder_name[-1])
+        agent_name = "R{:0>4} A{}:{}".format(self._current_run + 1, folder_name[-2], folder_name[-1])
 
         if len(img_name.split("-")) == 2:
             a1, a2 = img_name.split("-")
@@ -173,6 +177,11 @@ class ImageViewer(object):
         else:
             self.next_run()
 
+    def prev_agent(self):
+        # TODO: Implement this
+        print("Not implemented!")
+        pass
+
     def get_subfolders(self, folder):
         #print(folder)
         #print(os.listdir(folder))
@@ -208,7 +217,9 @@ class ImageViewer(object):
 
 
 if __name__ == "__main__":
-    desc = "Command line script to view and re-save images generated in collaboration runs."
+    desc = """Command line script to view and re-save images generated in
+    collaboration runs to a gallery folder.
+    """
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('-f', metavar='run folder', type=str, dest='run_folder',
                         help="The run folder.")
