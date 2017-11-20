@@ -22,7 +22,11 @@ class ImageViewer(object):
         self._images, self._functions = self.parse_images(self._current_folder)
         #print(self._current_folder, self._images, self._functions)
         self._img_index = 0
+        
+        if not os.path.exists(save_folder):
+            os.mkdir(save_folder)
         self._save_folder = save_folder
+
         self._resave_size = resave_size
         # Override closing protocol so that running tasks are cancelled before
         # exiting.
@@ -39,11 +43,11 @@ class ImageViewer(object):
         self.current_image = ImageTk.PhotoImage(self._image)
         self.image_label = Label(self.image_frame, image=self.current_image)
         self.image_label.grid(row=0, column=0)
-        self.image_label.pack()
+        # self.image_label.pack()
         img_name = self.format_image_name(self._images[self._img_index])
         self.image_name_label = Label(self.image_frame, text=img_name)
         self.image_name_label.grid(row=1, column=0)
-        self.image_name_label.pack()
+        # self.image_name_label.pack()
 
         self.gui_frame = Frame(self.frame,
                                borderwidth=0,
@@ -79,8 +83,9 @@ class ImageViewer(object):
     def save_image(self, event=None):
         img_path = os.path.join(self._current_folder, self._images[self._img_index])
         print("Saving image {} to {}.".format(self._images[self._img_index], self._save_folder))
-        shutil.copy(img_path, self._save_folder)
-        shutil.copy(os.path.join(self._current_folder, self._functions[self._img_index][1]), self._save_folder)
+        shutil.copy(img_path, os.path.join(self._save_folder, self._images[self._img_index]))
+        shutil.copy(os.path.join(self._current_folder, self._functions[self._img_index][1]),
+                    os.path.join(self._save_folder, self._functions[self._img_index][1]))
 
     def format_image_name(self, img_name):
         def get_aesthetic(aest):
@@ -119,12 +124,12 @@ class ImageViewer(object):
         self.image_label.destroy()
         self.image_label = Label(self.image_frame, image=self.current_image)
         self.image_label.grid(row=0, column=0)
-        self.image_label.pack()
+        # self.image_label.pack()
         self.image_name_label.destroy()
         img_name = self.format_image_name(self._images[self._img_index])
         self.image_name_label = Label(self.image_frame, text=img_name)
         self.image_name_label.grid(row=1, column=0)
-        self.image_name_label.pack()
+        # self.image_name_label.pack()
         #self.image_label.text = os.path.join(self._current_folder, self._images[self._img_index])
         #self.image_label.pack()
 
