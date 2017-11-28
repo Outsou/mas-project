@@ -203,8 +203,8 @@ class GeneticImageArtifact(Artifact):
         try:
             for x, y in coords:
                 # Normalize coordinates in range [-1, 1]
-                x_normalized = x / width * 2 - 1
-                y_normalized = y / height * 2 - 1
+                x_normalized = x / (width - 1) * 2 - 1
+                y_normalized = y / (height - 1) * 2 - 1
                 val = func(x_normalized, y_normalized)
                 # TODO: is this going to work with RGB too if type(val) == list?
                 if type(val) is not int:

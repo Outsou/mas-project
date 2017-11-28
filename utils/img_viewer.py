@@ -22,7 +22,7 @@ class ImageViewer(object):
         self._images, self._functions = self.parse_images(self._current_folder)
         #print(self._current_folder, self._images, self._functions)
         self._img_index = 0
-        
+
         if not os.path.exists(save_folder):
             os.mkdir(save_folder)
         self._save_folder = save_folder
