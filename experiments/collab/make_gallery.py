@@ -50,7 +50,7 @@ def copy_pics(path, output):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Recursively go through all subfolders and create images in path.")
+    parser = argparse.ArgumentParser(description="Add 1000x1000 images from source folder to gallery in output folder.")
     parser.add_argument('-l', metavar='folder', type=str, dest='run_folder', help='Folder for the runs.')
     parser.add_argument('-o', metavar='folder', type=str, dest='output_folder', help='Folder for the output.')
     args = parser.parse_args()
