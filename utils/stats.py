@@ -749,9 +749,20 @@ def analyze_collab_arts(dirs):
 
     return collab_art_stats
 
+
+def count_first(pref_lists, addr):
+    count = 0
+    for key, lists in pref_lists.items():
+        if key != addr:
+            for pref_list in lists:
+                if addr == pref_list[0]:
+                    count += 1
+    return count
+
+
 def analyze_own_arts(dirs):
     own_art_stats = common_agent_analysis(dirs, 'own_arts.pkl')
-
+    skill_dict = {}
     first_dir = os.path.split(dirs[0])[1]
     iters = int(int(re.findall(r'i\d+', first_dir)[0][1:]) / 2)
 
@@ -760,12 +771,21 @@ def analyze_own_arts(dirs):
     aest_stats = {}
 
     for dir in dirs:
+        pref_lists = pickle.load(open(os.path.join(dir, 'pref_lists.pkl'), 'rb'))
         sub_dirs = get_dirs_in_dir(dir)
         for sub_dir in sub_dirs:
             pkl = os.path.join(sub_dir, 'own_arts.pkl')
             own_arts = pickle.load(open(pkl, 'rb'))
             general_info = pickle.load(open(os.path.join(sub_dir, 'general_info.pkl'), 'rb'))
             aest = general_info['aesthetic']
+
+            num_of_skills = len(general_info['pset_names'])
+            if num_of_skills not in skill_dict:
+                skill_dict[num_of_skills] = {}
+                skill_dict[num_of_skills]['count'] = 0
+                skill_dict[num_of_skills]['val'] = []
+
+            skill_dict[num_of_skills]['count'] += count_first(pref_lists, general_info['addr'])
 
             if aest not in aest_stats:
                 aest_stats[aest] = {'evals': [],
@@ -775,6 +795,8 @@ def analyze_own_arts(dirs):
             aest_stats[aest]['evals'] += own_arts['eval']
             aest_stats[aest]['vals'] += own_arts['val']
             aest_stats[aest]['novs'] += own_arts['nov']
+
+            skill_dict[num_of_skills]['val'] += own_arts['val']
 
             for i in range(iters):
                 vals[i].append(own_arts['val'][i])
@@ -791,9 +813,13 @@ def analyze_own_arts(dirs):
         aest_means[aest]['val'] = np.mean(aest_stats[aest]['vals'])
         aest_means[aest]['nov'] = np.mean(aest_stats[aest]['novs'])
 
+    for skill_amount in skill_dict.keys():
+        skill_dict[skill_amount]['val'] = np.mean(skill_dict[skill_amount]['val'])
+
     own_art_stats['step_vals'] = vals
     own_art_stats['step_novs'] = novs
     own_art_stats['aest_means'] = aest_means
+    own_art_stats['skill_dict'] = skill_dict
     return own_art_stats
 
 
@@ -1288,6 +1314,12 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         # Make pair count bar graph
         make_pair_count_bar_graph(collab_art_stats['aesthetic_pairs'], model)
         pair_counts[model] = collab_art_stats['aesthetic_pairs']
+
+        # Print how many times agents with different amount of skills were chosen
+        print('Skills:\tchosen/mean solo val')
+        for skill_amount, stats in sorted(own_art_stats['skill_dict'].items()):
+            val = format_s % stats['val']
+            print('{}:\t\t{}/{}'.format(skill_amount, stats['count'], val))
 
 
     # make_pair_count_bar_graph_all(pair_counts)
