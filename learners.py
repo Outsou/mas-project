@@ -1,6 +1,7 @@
 import numpy as np
 from creamas.math import gaus_pdf
 from operator import itemgetter
+from scipy.stats import norm
 
 
 class MultiLearner():
@@ -31,6 +32,7 @@ class MultiLearner():
         self.std = std
         self.e = e
         self.reg_weight = reg_weight
+        self.gaussians = {}
 
         # Get length of the polynomial transform
         poly_len = len(self._poly_transform(np.zeros(num_of_features)))
@@ -48,6 +50,7 @@ class MultiLearner():
             self.centroids[addr] = np.array(init_vals)
             self.bandits[addr] = 1
             self.poly_weights[addr] = np.array([0.5] * poly_len)
+            self.gaussians[addr] = {'mean': 0.5, 'var': 0.08}
 
         if std is not None:
             self.max = gaus_pdf(1, 1, std)
@@ -140,6 +143,16 @@ class MultiLearner():
         error = true_value - np.sum(self.poly_weights[addr] * poly_feats)
         gradient = poly_feats * error
         self.poly_weights[addr] += self.weight_rate * gradient
+
+
+    def update_gaussian(self, val, addr):
+        mean = self.gaussians[addr]['mean']
+        var = self.gaussians[addr]['var']
+
+        delta = val - mean
+        self.gaussians[addr]['mean'] += delta * 0.05
+        self.gaussians[addr]['var'] = (delta**2 - var) * 0.1
+
 
     def sgd_choose(self, features):
         """
@@ -257,3 +270,24 @@ class MultiLearner():
         sorted_addrs, _ = zip(*sorted(estimate_dict.items(), key=itemgetter(1), reverse=True))
         return sorted_addrs
 
+
+    def gaussian_choose(self, target, get_list=False):
+        if np.random.rand() < self.e:
+            if get_list:
+                keys = list(self.gaussians.keys())
+                np.random.shuffle(keys)
+                return keys
+            return np.random.choice(list(self.gaussians.keys()))
+
+        prob_dict = {}
+        for addr, gauss in self.gaussians.items():
+            prob = norm.cdf(target + 0.1, gauss['mean'], np.sqrt(gauss['var'])) \
+                   - norm.cdf(target - 0.1, gauss['mean'], np.sqrt(gauss['var']))
+            prob_dict[addr] = prob
+
+        keys, vals = zip(*sorted(self.prob_dict.items(), key=itemgetter(1), reverse=True))
+
+        if get_list:
+            return keys
+        else:
+            return keys[0]

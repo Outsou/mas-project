@@ -729,9 +729,12 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
         e, fr = self.evaluate(artifact)
 
-        if self.collab_model == 'Q2':
-            if len(artifact.creator.split(' - ')) == 1:
+        if len(artifact.creator.split(' - ')) == 1:
+            if self.collab_model == 'Q2':
                 self.learner.update_bandit(e, artifact.creator)
+            if self.collab_model == 'gaussian':
+                self.learner.update_gaussian(e, artifact.creator)
+
 
         # Fixed threshold here.
         if fr['novelty'] > 0.4 and fr['norm_value'] > 0.5:
