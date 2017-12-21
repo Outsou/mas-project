@@ -13,7 +13,7 @@ import pprint
 import numpy as np
 from deap import tools, gp, creator, base
 import aiomas
-from creamas import Simulation
+from creamas import Simulation, Artifact
 from creamas.util import create_tasks, run
 
 from environments import StatEnvironment
@@ -137,8 +137,13 @@ class CollaborationBaseAgent(GPImageAgent):
         rets = super().add_connections(conns)
 
         # Initialize the multi-model learner
-        self.learner = MultiLearner(list(self.connections),
-                                    len(self.R))
+        if self.collab_model in ['Q2', 'Q3', 'lr']:
+            self.learner = MultiLearner(list(self.connections),
+                                        len(self.R),
+                                        e=0)
+        else:
+            self.learner = MultiLearner(list(self.connections),
+                                        len(self.R))
 
         return rets
 
@@ -450,6 +455,25 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         self.collab_pop = population
 
     @aiomas.expose
+    async def select_from_pop(self, population):
+        """Use selection to population.
+
+        :param population: Population as Individuals or Artifacts
+        """
+        are_arts = False
+        if issubclass(population[0].__class__, Artifact):
+            are_arts = True
+            population = self.arts2pop(population)
+        self.evaluate_population(population)
+        offspring = tools.selBest(population, 1)
+        offspring += self.toolbox.select(population, len(population) - 1)
+        self.collab_pop = offspring
+        if are_arts:
+            offspring = self.pop2arts(offspring)
+        return offspring
+
+
+    @aiomas.expose
     def get_collab_pop(self):
         return self.pop2arts(self.collab_pop)
 
@@ -463,8 +487,15 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         r_agent = await self.connect(self.caddr)
         cagent_init_arts = await r_agent.get_collab_pop()
         cagent_init_pop = self.arts2pop(cagent_init_arts)
-        self.collab_pop += cagent_init_pop
-        population, i = await self.continue_collab(self.collab_pop, 0)
+        selected_cagent_pop = await self.select_from_pop(cagent_init_pop)
+        collab_arts = self.pop2arts(self.collab_pop)
+        selected_arts = await r_agent.select_from_pop(collab_arts)
+        selected_pop = self.arts2pop(selected_arts)
+        self.collab_pop = selected_pop + selected_cagent_pop
+        random.shuffle(self.collab_pop)
+        self.collab_pop = list(map(self.toolbox.clone, self.collab_pop))
+        population, i = await self.continue_collab(self.collab_pop, 0,
+                                                   use_selection=False)
         self.collab_pop = population
         i = 1  # start from 1 because 0th was the initial population.
         while i <= max_iter:
@@ -482,13 +513,15 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         self._log(logging.ERROR,
                   "HÄLÄRMRMRM We should not be here (start_collab)", i)
 
-    async def continue_collab(self, population, iter):
+    async def continue_collab(self, population, iter,
+                              use_selection=True):
         """Continue collaboration by working on the population.
         """
         #print("{} continue collab iter: {}".format(self.addr, iter))
         #print(population)
         GIA.evolve_population(population, 1, self.toolbox, self.pset,
-                              self.collab_hof)
+                              self.collab_hof,
+                              use_selection_on_first=use_selection)
         return population, iter + 1
 
     def finish_collab(self, population):
@@ -512,7 +545,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                   "finalize collab with {}".format(self.addr, self.caddr))
         self.evaluate_population(pop)
         arts1 = self.hof2arts(self.collab_hof)
-        best, ranking = choose_best(hof_arts, arts1, epsilon=0.02)
+        best, ranking = choose_best(hof_arts, arts1, epsilon=0.00)
         return best, ranking
 
     async def collab_first_iter(self, population, iter):
@@ -738,7 +771,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
         # Fixed threshold here.
         if fr['novelty'] > 0.4 and fr['norm_value'] > 0.5:
-            self._log(logging.INFO,
+            self._log(logging.DEBUG,
                       "Learning (nov={}, nval={}): {}"
                       .format(fr['novelty'], fr['norm_value'], artifact.aid))
             self.learn(artifact)
@@ -753,8 +786,8 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         :param dict evaluations:
            Keys are addresses and values are evaluation, framing pairs.
         """
-        self._log(logging.INFO,
-                  "Got evals from {}: {}".format(artifact.aid, evaluations))
+        self._log(logging.DEBUG,
+                  "Got evals from {}".format(artifact.aid))
         if self.collab_model == 'random':
             return
 
@@ -762,7 +795,9 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         addrs.remove('creator')
         addrs.remove(self.addr)
 
-        if self.collab_model == 'Q3':
+        # TODO: These learn now also from collaborated artifacts?
+        if self.collab_model == 'Q3' and artifact.creator == self.addr:
+            #self._log(logging.INFO, "Jep!!! {}".format(artifact.creator))
             for addr in addrs:
                 self.learner.update_bandit(evaluations[addr][1]['norm_evaluation'], addr)
             return

@@ -87,15 +87,18 @@ class GeneticImageArtifact(Artifact):
         return individual
 
     @staticmethod
-    def resave_with_resolution(fname, pset, color_map, shape=(1000, 1000)):
+    def resave_with_resolution(fname, pset, color_map, shape=(1000, 1000), cm_name=""):
         """Resave an individual saved as a string into a file with given
         color mapping and resolution.
         """
         individual = GeneticImageArtifact.artifact_from_file(fname, pset)
         func = gp.compile(individual, pset)
         img = GeneticImageArtifact.generate_image(func, shape)
-        color_img = color_map[img]
-        new_fname = "{}_{}x{}.png".format(fname[:-4], shape[0], shape[1])
+        if color_map is not None:
+            color_img = color_map[img]
+        else:
+            color_img = img
+        new_fname = "{}_{}_{}x{}.png".format(fname[:-4], cm_name, shape[0], shape[1])
         misc.imsave(new_fname, color_img)
 
     @staticmethod
@@ -200,8 +203,8 @@ class GeneticImageArtifact(Artifact):
         try:
             for x, y in coords:
                 # Normalize coordinates in range [-1, 1]
-                x_normalized = x / width * 2 - 1
-                y_normalized = y / height * 2 - 1
+                x_normalized = x / (width - 1) * 2 - 1
+                y_normalized = y / (height - 1) * 2 - 1
                 val = func(x_normalized, y_normalized)
                 # TODO: is this going to work with RGB too if type(val) == list?
                 if type(val) is not int:
@@ -274,7 +277,8 @@ class GeneticImageArtifact(Artifact):
 
     @staticmethod
     def evolve_population(population, generations, toolbox, pset, hall_of_fame,
-                          cxpb=0.75, mutpb=0.25, injected_inds=[]):
+                          cxpb=0.75, mutpb=0.25, injected_inds=[],
+                          use_selection_on_first=True):
         """
         Evolves a population of individuals. Applies elitist (k=1) in addition
         to toolbox's selection strategy to the individuals.
@@ -296,12 +300,15 @@ class GeneticImageArtifact(Artifact):
         hall_of_fame.update(population)
 
         for g in range(generations):
-            # Select the next generation individuals with elitist (k=1) and
-            # toolboxes selection method
-            offspring = tools.selBest(population, 1)
-            offspring += toolbox.select(population, pop_len - 1)
-            # Clone the selected individuals
-            offspring = list(map(toolbox.clone, offspring))
+            if not use_selection_on_first and g == 0:
+                offspring = list(map(toolbox.clone, population))
+            else:
+                # Select the next generation individuals with elitist (k=1) and
+                # toolboxes selection method
+                offspring = tools.selBest(population, 1)
+                offspring += toolbox.select(population, pop_len - 1)
+                # Clone the selected individuals
+                offspring = list(map(toolbox.clone, offspring))
 
             # Apply crossover and mutation on the offspring
 

@@ -44,7 +44,7 @@ def filter(hof, epsilon=0.02):
 
 
 def rank(hof):
-    return [(hof[i][0], i + 1) for i in range(len(hof) )]
+    return [(hof[i][0], i + 1) for i in range(len(hof))]
 
 
 def match(fl1, fl2, epsilon=0.02):
