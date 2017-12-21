@@ -333,6 +333,10 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                 feats.append(self.get_features(art))
             partners = self.learner.linear_choose_multi(feats)
 
+        # TODO:
+        # if self.collab_model == 'gaussian':
+        #     partners = self.learner.gaussian_choose(target, get_list=True)
+
         return self.addr, partners
 
     @aiomas.expose
@@ -765,8 +769,9 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         if len(artifact.creator.split(' - ')) == 1:
             if self.collab_model == 'Q2':
                 self.learner.update_bandit(e, artifact.creator)
-            if self.collab_model == 'gaussian':
-                self.learner.update_gaussian(e, artifact.creator)
+            # TODO:
+            # if self.collab_model == 'gaussian':
+            #     self.learner.update_gaussian(fr['value'], artifact.creator)
 
 
         # Fixed threshold here.
