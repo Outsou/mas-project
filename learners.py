@@ -2,6 +2,7 @@ import numpy as np
 from creamas.math import gaus_pdf
 from operator import itemgetter
 from scipy.stats import norm
+import math
 
 
 class MultiLearner():
@@ -13,7 +14,7 @@ class MultiLearner():
     """
 
     def __init__(self, addrs, num_of_features, std=None,
-                 centroid_rate=0.01, weight_rate=0.2, e=0.2, reg_weight=0.5):
+                 centroid_rate=0.01, weight_rate=0.2, e=0.2, reg_weight=0.5, gauss_mem=10):
         """
         :param list addrs:
             Addresses of the agents that are modeled.
@@ -25,6 +26,9 @@ class MultiLearner():
             Learning rate for centroids.
         :param float weight_rate:
             Learning rate for weights.
+        :param int gauss_mem:
+            How many latest artifacts the gaussian method remembers. If <= 0, the completely online update method
+            is used.
         """
         self.centroid_rate = centroid_rate
         self.weight_rate = weight_rate
@@ -33,6 +37,7 @@ class MultiLearner():
         self.e = e
         self.reg_weight = reg_weight
         self.gaussians = {}
+        self.gauss_mem = gauss_mem
 
         # Get length of the polynomial transform
         poly_len = len(self._poly_transform(np.zeros(num_of_features)))
@@ -50,7 +55,7 @@ class MultiLearner():
             self.centroids[addr] = np.array(init_vals)
             self.bandits[addr] = 1
             self.poly_weights[addr] = np.array([0.5] * poly_len)
-            self.gaussians[addr] = {'mean': 0.5, 'var': 0.08}
+            self.gaussians[addr] = {'mean': 0.5, 'var': 0.08, 'vals': []}
 
         if std is not None:
             self.max = gaus_pdf(1, 1, std)
@@ -146,12 +151,20 @@ class MultiLearner():
 
 
     def update_gaussian(self, val, addr):
-        mean = self.gaussians[addr]['mean']
-        var = self.gaussians[addr]['var']
+        if self.gauss_mem > 0:
+            self.gaussians[addr]['vals'].append(val)
+            if len(self.gaussians[addr]['vals']) > self.gauss_mem:
+                del self.gaussians[addr]['vals'][0]
+            self.gaussians[addr]['mean'] = np.mean(self.gaussians[addr]['vals'])
+            if len(self.gaussians[addr]['vals']) > 1:
+                self.gaussians[addr]['var'] = np.var(self.gaussians[addr]['vals'])
+        else:
+            mean = self.gaussians[addr]['mean']
+            var = self.gaussians[addr]['var']
 
-        delta = val - mean
-        self.gaussians[addr]['mean'] += delta * 0.05
-        self.gaussians[addr]['var'] = (delta**2 - var) * 0.1
+            delta = val - mean
+            self.gaussians[addr]['mean'] += delta * 0.1
+            self.gaussians[addr]['var'] += (delta**2 - var) * 0.2
 
 
     def sgd_choose(self, features):
@@ -272,6 +285,12 @@ class MultiLearner():
 
 
     def gaussian_choose(self, target, get_list=False):
+        def get_mean_dist(mean, var, point):
+            diff_mean = mean - point
+            dist_mean = np.sqrt(var) * np.sqrt(2 / np.pi) * np.exp(-diff_mean ** 2 / (2 * var)) \
+                        - diff_mean * math.erf(-diff_mean / np.sqrt(2 * var))
+            return dist_mean
+
         if np.random.rand() < self.e:
             if get_list:
                 keys = list(self.gaussians.keys())
@@ -279,13 +298,22 @@ class MultiLearner():
                 return keys
             return np.random.choice(list(self.gaussians.keys()))
 
-        prob_dict = {}
+        dist_dict = {}
         for addr, gauss in self.gaussians.items():
-            prob = norm.cdf(target + 0.1, gauss['mean'], np.sqrt(gauss['var'])) \
-                   - norm.cdf(target - 0.1, gauss['mean'], np.sqrt(gauss['var']))
-            prob_dict[addr] = prob
+            # prob = norm.cdf(target + 0.1, gauss['mean'], np.sqrt(gauss['var'])) \
+            #        - norm.cdf(target - 0.1, gauss['mean'], np.sqrt(gauss['var']))
 
-        keys, vals = zip(*sorted(self.prob_dict.items(), key=itemgetter(1), reverse=True))
+            # prob =  norm.pdf(target, gauss['mean'], np.sqrt(gauss['var'])) / norm.pdf(0, 0, np.sqrt(gauss['var']))
+
+            # Math from https://en.wikipedia.org/wiki/Folded_normal_distribution
+            diff_mean = gauss['mean'] - target
+            dist_mean = np.sqrt(gauss['var']) * np.sqrt(2 / np.pi) * np.exp(-diff_mean ** 2 / (2 * gauss['var'])) \
+                        - diff_mean * math.erf(-diff_mean / np.sqrt(2 * gauss['var']))
+
+            dist_dict[addr] = dist_mean
+
+
+        keys, vals = zip(*sorted(dist_dict.items(), key=itemgetter(1)))
 
         if get_list:
             return keys
