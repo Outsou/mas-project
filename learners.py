@@ -1,7 +1,6 @@
 import numpy as np
 from creamas.math import gaus_pdf
 from operator import itemgetter
-from scipy.stats import norm
 import math
 
 
@@ -14,7 +13,8 @@ class MultiLearner():
     """
 
     def __init__(self, addrs, num_of_features, std=None,
-                 centroid_rate=0.01, weight_rate=0.2, e=0.2, reg_weight=0.5, gauss_mem=10):
+                 centroid_rate=0.01, weight_rate=0.2, e=0.2, reg_weight=0.5, gauss_mem=10,
+                 q_states=None, q_init_val = 0.8):
         """
         :param list addrs:
             Addresses of the agents that are modeled.
@@ -29,6 +29,8 @@ class MultiLearner():
         :param int gauss_mem:
             How many latest artifacts the gaussian method remembers. If <= 0, the completely online update method
             is used.
+        :param q_init_val:
+            The Q-values are initialized with this value.
         """
         self.centroid_rate = centroid_rate
         self.weight_rate = weight_rate
@@ -38,6 +40,7 @@ class MultiLearner():
         self.reg_weight = reg_weight
         self.gaussians = {}
         self.gauss_mem = gauss_mem
+        self.addrs = addrs
 
         # Get length of the polynomial transform
         poly_len = len(self._poly_transform(np.zeros(num_of_features)))
@@ -48,14 +51,22 @@ class MultiLearner():
         self.sgd_weights = {}
         self.centroids = {}
         self.bandits = {}
+        self.q_vals = None
         for addr in addrs:
             init_vals = [0.5] * num_of_features
             self.linear_weights[addr] = np.append(init_vals, init_vals[0])
             self.sgd_weights[addr] = np.array(init_vals)
             self.centroids[addr] = np.array(init_vals)
-            self.bandits[addr] = 1
+            self.bandits[addr] = q_init_val
             self.poly_weights[addr] = np.array([0.5] * poly_len)
             self.gaussians[addr] = {'mean': 0.5, 'var': 0.08, 'vals': []}
+
+        if q_states is not None:
+            self.q_vals = {}
+            for q_state in q_states:
+                self.q_vals[q_state] = {}
+                for addr in addrs:
+                    self.q_vals[q_state][addr] = q_init_val
 
         if std is not None:
             self.max = gaus_pdf(1, 1, std)
@@ -76,6 +87,18 @@ class MultiLearner():
         transformation.append(1)
         return np.array(transformation)
 
+    def get_random_addr(self, get_list=False):
+        if get_list:
+            return np.random.permutation(self.addrs)
+        return np.random.choice(self.addrs)
+
+    def sort_addr_dict(self, addr_dict, get_list=False, reverse=True):
+        """Sorts a dictionary where key is addr and value is numerical."""
+        sorted_addrs, _ = zip(*sorted(addr_dict.items(), key=itemgetter(1), reverse=reverse))
+        if get_list:
+            return sorted_addrs
+        return sorted_addrs[0]
+
     def _sgd_estimate(self, addr, features):
         """Estimate value the SGD model.
         Returns the estimate and individual values for different features.
@@ -87,6 +110,22 @@ class MultiLearner():
             vals[i] = gaus_pdf(features[i], self.centroids[addr][i], self.std) / self.max
         estimate = np.sum(self.sgd_weights[addr] * vals)
         return estimate, vals
+
+    def update_q(self, value, addr, state, learning_factor=0.9):
+        """
+        Updates the Q-value for state, addr pair.
+
+        :param value:
+            The evaluation of the artifact from addr.
+        :param addr:
+            The connection that will be updated.
+        :param state:
+            The state that will be updated.
+        :param learning_factor:
+            Controls learning speed.
+        """
+        old_value = self.q_vals[state][addr]
+        self.q_vals[state][addr] += learning_factor * (value - old_value)
 
     def update_bandit(self, true_value, addr, discount_factor=0,
                       learning_factor=0.9):
@@ -149,7 +188,6 @@ class MultiLearner():
         gradient = poly_feats * error
         self.poly_weights[addr] += self.weight_rate * gradient
 
-
     def update_gaussian(self, val, addr):
         if self.gauss_mem > 0:
             self.gaussians[addr]['vals'].append(val)
@@ -166,7 +204,6 @@ class MultiLearner():
             self.gaussians[addr]['mean'] += delta * 0.1
             self.gaussians[addr]['var'] += (delta**2 - var) * 0.2
 
-
     def sgd_choose(self, features):
         """
         Choose a connection with the SGD model.
@@ -177,7 +214,7 @@ class MultiLearner():
             The chosen connection's address.
         """
         if np.random.rand() < self.e:
-            return np.random.choice(list(self.sgd_weights.keys()))
+            return self.get_random_addr(get_list=False)
 
         best_estimate = -1
         best_addr = None
@@ -192,7 +229,7 @@ class MultiLearner():
 
     def poly_choose(self, features):
         if np.random.rand() < self.e:
-            return np.random.choice(list(self.poly_weights.keys()))
+            return self.get_random_addr(get_list=False)
 
         poly_feats = self._poly_transform(features)
         best_estimate = -np.inf
@@ -213,28 +250,12 @@ class MultiLearner():
             The chosen connection's address.
         """
         if np.random.rand() < self.e:
-            if get_list:
-                keys = list(self.bandits.keys())
-                np.random.shuffle(keys)
-                return keys
-            return np.random.choice(list(self.bandits.keys()))
+            return self.get_random_addr(get_list)
 
-        if get_list:
-            keys, vals = zip(*sorted(self.bandits.items(), key=itemgetter(1), reverse=True))
-            return keys
-
-        best = -np.inf
-        best_addr = None
-
-        for addr, value in self.bandits.items():
-            if value > best:
-                best = value
-                best_addr = addr
-
-        return best_addr
+        return self.sort_addr_dict(self.bandits, get_list)
 
     def linear_choose(self, features):
-        """Choose a connection with the linear regression model.
+        """Choose a connection with the linear regression model. Choice is based on an artifact.
 
         :param features:
             List of features of the artifact.
@@ -242,7 +263,7 @@ class MultiLearner():
             The chosen connection's address.
         """
         if np.random.random() < self.e:
-            return np.random.choice(list(self.linear_weights.keys()))
+            return self.get_random_addr(get_list=False)
 
         addrs = list(self.linear_weights.keys())
         feature_vec = np.append(features, 1)
@@ -259,6 +280,7 @@ class MultiLearner():
 
     def linear_choose_multi(self, artifacts):
         """Returns a list of addresses in order of highest to lowest average evaluation of the artifacts.
+        Sorting is based on a list of multiple artifacts.
 
         :param artifacts:
             List containing feature lists of the artifacts.
@@ -268,8 +290,7 @@ class MultiLearner():
         addrs = list(self.linear_weights.keys())
 
         if np.random.random() < self.e:
-            np.random.shuffle(addrs)
-            return addrs
+            return self.get_random_addr(get_list=True)
 
         estimate_dict = {}
         for addr in addrs:
@@ -283,39 +304,25 @@ class MultiLearner():
         sorted_addrs, _ = zip(*sorted(estimate_dict.items(), key=itemgetter(1), reverse=True))
         return sorted_addrs
 
-
     def gaussian_choose(self, target, get_list=False):
-        def get_mean_dist(mean, var, point):
-            diff_mean = mean - point
-            dist_mean = np.sqrt(var) * np.sqrt(2 / np.pi) * np.exp(-diff_mean ** 2 / (2 * var)) \
-                        - diff_mean * math.erf(-diff_mean / np.sqrt(2 * var))
-            return dist_mean
-
         if np.random.rand() < self.e:
-            if get_list:
-                keys = list(self.gaussians.keys())
-                np.random.shuffle(keys)
-                return keys
-            return np.random.choice(list(self.gaussians.keys()))
+            return self.get_random_addr(get_list)
 
         dist_dict = {}
         for addr, gauss in self.gaussians.items():
-            # prob = norm.cdf(target + 0.1, gauss['mean'], np.sqrt(gauss['var'])) \
-            #        - norm.cdf(target - 0.1, gauss['mean'], np.sqrt(gauss['var']))
-
-            # prob =  norm.pdf(target, gauss['mean'], np.sqrt(gauss['var'])) / norm.pdf(0, 0, np.sqrt(gauss['var']))
-
-            # Math from https://en.wikipedia.org/wiki/Folded_normal_distribution
             diff_mean = gauss['mean'] - target
+            # Math from https://en.wikipedia.org/wiki/Folded_normal_distribution
             dist_mean = np.sqrt(gauss['var']) * np.sqrt(2 / np.pi) * np.exp(-diff_mean ** 2 / (2 * gauss['var'])) \
                         - diff_mean * math.erf(-diff_mean / np.sqrt(2 * gauss['var']))
 
             dist_dict[addr] = dist_mean
 
+        return self.sort_addr_dict(dist_dict, get_list, reverse=False)
 
-        keys, vals = zip(*sorted(dist_dict.items(), key=itemgetter(1)))
+    def q_choose(self, state, get_list=False):
+        if np.random.rand() < self.e:
+            return self.get_random_addr(get_list)
 
-        if get_list:
-            return keys
-        else:
-            return keys[0]
+        vals = self.q_vals[state]
+        return self.sort_addr_dict(vals, get_list)
+
