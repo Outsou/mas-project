@@ -932,7 +932,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         super().append_oa(artifact)
         self.own_arts['tgt'].append(self.aesthetic_target)
 
-    def append_coa(self, fb, caest, ctgt, artifact=None):
+    def append_coa(self, fb, caest, artifact=None, ctgt=None):
         super().append_coa(fb, caest, artifact)
         self.collab_arts['tgt'].append(self.aesthetic_target)
         if fb:
