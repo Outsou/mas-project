@@ -243,7 +243,7 @@ def run_experiment(agent_cls, params, num_of_simulations, num_of_steps,
 
             # Create agents to the environment
             super_pset = create_super_pset(bw=True)
-            create_agents(agent_cls, menv, params, log_folder, path, pop_size, shape, output_shape, sample_size, super_pset)
+            create_agents(agent_cls, menv, params, log_folder, path, pop_size, shape, output_shape, sample_size)
 
             # Make fully connected graph for agent connections.
             create_agent_connections(menv, params['agents'])

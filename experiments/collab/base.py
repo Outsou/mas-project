@@ -15,6 +15,8 @@ from deap import tools, gp, creator, base
 import aiomas
 from creamas import Simulation, Artifact
 from creamas.util import create_tasks, run
+from creamas.rules import RuleLeaf
+from creamas.mappers import DoubleLinearMapper
 
 from environments import StatEnvironment
 
@@ -22,6 +24,7 @@ from agents import GPImageAgent, agent_name_parse
 from artifacts import GeneticImageArtifact as GIA
 from experiments.collab.ranking import choose_best
 from learners import MultiLearner
+from features import ImageEntropyFeature, ImageComplexityFeature
 
 __all__ = ['CollaborationBaseAgent',
            'GPCollaborationAgent',
@@ -815,7 +818,6 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                                                       feats)
             return
 
-
     @aiomas.expose
     def get_last_artifact(self):
         return self.last_artifact
@@ -848,6 +850,212 @@ class GPCollaborationAgent(CollaborationBaseAgent):
     #         else:
     #             aest_counts[other_aest] += 1
     #     self._log(logging.INFO, str(aest_counts))
+
+
+class DriftingGPCollaborationAgent(GPCollaborationAgent):
+    """GP collaboration agent which changes its preferences during the
+    simulation's execution.
+
+    At random time steps the preferences will drift considerably. The drifting
+    is used to simulate a change in the conceptual thinking of the agent. That
+    is, a drifting agents is currently changing its artistic style.
+
+    :param float aesthetic_target:
+        The initial target value for aesthetic measure. If float, must be
+        between ``aesthetic_bounds``. If it equals to ``"random"``, then
+        a random value between given ``aesthetic_bounds`` is chosen.
+    :param tuple aesthetic_bounds:
+        Bounds for aesthetic's target value as a tuple ``(min, max)``.
+    :param float novelty_target:
+        The initial target value for novelty. If ``None``, maximizes novelty and
+        does not change the target during the agent's life time.
+    :param tuple novelty_bounds:
+        Bounds for target novelty value. Ignored if ``novelty_target == None``.
+    :param float drifting_prob:
+        Probability to start drifting on each iteration.
+    :param int drifting_speed:
+        How many iterations the drifting takes to reach its target.
+
+    """
+    def __init__(self, *args, **kwargs):
+        # Current target value and bounds for the aesthetic function. Different
+        # aesthetic functions may have different initial targets and bounds.
+        self._aesthetic_target = kwargs.pop('aesthetic_target', 1.35)
+        # Target value bounds for the given aesthetic. The aesthetic's objective
+        # values should surpass these bounds at least by some epsilon > 0.
+        self.aesthetic_bounds = kwargs.pop('aesthetic_bounds', (1.1, 1.9))
+        if self._aesthetic_target == 'random':
+            self._aesthetic_target = random.uniform(*self.aesthetic_bounds)
+        # Noise applied to the aesthetic target on each iteration
+        self.aesthetic_noise = kwargs.pop('aesthetic_noise', 0.0)
+        # The scale of aesthetic target's drift. Uses normal distribution with
+        # this scale.
+        self.aesthetic_drift_amount = kwargs.pop('aesthetic_drift_amount', 0.2)
+        # Current target and bounds for the novelty measure
+        self.novelty_target = kwargs.pop('novelty_target', 0.4)
+        self.novelty_bounds = kwargs.pop('novelty_bounds', (0.1, 0.6))
+        # Noise applied to the novelty target on each iteration
+        self.novelty_noise = kwargs.pop('novelty_noise', 0.0)
+        self.novelty_drift_amount = kwargs.pop('novelty_drift_amount', 0.2)
+        # Probability to start drifting on each simulation iteration. (If the
+        # targets are already drifting, is omitted.)
+        self.drifting_prob = kwargs.pop('drifting_prob', 0.05)
+        # How many iterations it takes to drift to the new target.
+        self.drifting_speed = kwargs.pop('drifting_speed', 5)
+        super().__init__(*args, **kwargs)
+
+        # Set aesthetic target to modify **R** with the current bounds.
+        self.aesthetic_target = self._aesthetic_target
+
+        # Are the aesthetic and novelty values currently drifting
+        self._is_drifting = False
+        # Current drifting target for aesthetic measure. Drifting will end to
+        # this target value (or very close to it).
+        self._drift_aest_target = None
+        # Aesthetic values for the next iterations to reach the current drift
+        # target
+        self._drift_aest_list = None
+        # Current drifting target for novelty measure. Drifting will end to
+        # this target value (or very close to it).
+        self._drift_novelty_target = None
+        # Novelty values for the future iterations to reach the current drift
+        # target.
+        self._drift_novelty_list = None
+
+        # Modify inherited data structures for saving artifacts.
+        self.own_arts['tgt'] = []               # Target for aesthetic value
+        self.collab_arts['tgt'] = []            # Unmodified target for aesthetic value
+        self.collab_arts['mtgt'] = []           # Modified target for aesthetic value (or same as 'tgt')
+        self.collab_arts['ctgt'] = []           # Collaborators (modified) target for aesthetic value
+
+    def append_oa(self, artifact):
+        super().append_oa(artifact)
+        self.own_arts['tgt'].append(self.aesthetic_target)
+
+    def append_coa(self, fb, caest, ctgt, artifact=None):
+        super().append_coa(fb, caest, artifact)
+        self.collab_arts['tgt'].append(self.aesthetic_target)
+        if fb:
+            self.collab_arts['mtgt'].append(self.aesthetic_target)
+            self.collab_arts['ctgt'].append(ctgt)
+
+    @property
+    def aesthetic_target(self):
+        return self._aesthetic_target
+
+    @aesthetic_target.setter
+    def aesthetic_target(self, new_target):
+        """Set the aesthetic target by creating a new :class:`RuleLeaf` and
+        replacing the first rule in **R** with it.
+
+        Also **W[0]** is set to 1.0.
+
+        The new target is bounded by ``aesthetic_bounds``.
+        """
+        if new_target < self.aesthetic_bounds[0]:
+            new_target = self.aesthetic_bounds[0]
+        if new_target > self.aesthetic_bounds[1]:
+            new_target = self.aesthetic_bounds[1]
+
+        self._aesthetic_target = new_target
+        if self.aesthetic == 'entropy':
+            feat = ImageEntropyFeature
+        elif self.aesthetic == 'complexity':
+            feat = ImageComplexityFeature
+        else:
+            raise ValueError("Aesthetic '{}' not recognized"
+                             .format(self.aesthetic))
+        dlm = DoubleLinearMapper(feat.MIN, new_target, feat.MAX)
+        self.R[0] = RuleLeaf(feat(), dlm)
+        self.W[0] = 1.0
+
+    def change_targets(self):
+        """Change aesthetic and novelty targets if they are not currently
+        drifting.
+
+        You can also directly change the aesthetic target by, e.g.
+        ``aesthetic_target = 1.3``. However, ``drift_towards_target`` is
+        designed to be used in conjunction with this method. Using this method
+        and setting ``aesthetic_target`` during the same run may cause
+        unexpected behavior.
+        """
+        def _get_new_target(cur_target, bounds, drift_amount):
+            # Create new drifting target within the bounds
+            while True:
+                nt = cur_target + np.random.normal(0.0, scale=drift_amount)
+                if bounds[0] <= nt <= bounds[1]:
+                    return nt
+
+        def _compute_drift_waypoints(cur_target, drift_target, n_waypoints):
+            """Compute linear drifting waypoints.
+            """
+            diff = drift_target - cur_target
+            wps = []
+            for i in range(1, n_waypoints + 1):
+                wps.append(cur_target + (i * (diff / n_waypoints)))
+            return wps
+
+        # Only create new targets if the targets are not currently drifting.
+        if not self._is_drifting:
+            self._drift_aest_target = _get_new_target(self.aesthetic_target,
+                                                      self.aesthetic_bounds,
+                                                      self.aesthetic_drift_amount)
+            self._drift_aest_list = _compute_drift_waypoints(self.aesthetic_target,
+                                                             self._drift_aest_target,
+                                                             self.drifting_speed)
+            self._log(logging.DEBUG,
+                      "Set AES drifting target to {:3.f}".format(
+                          self._drift_aest_target))
+            if self.novelty_target is not None:
+                self._drift_novelty_target = _get_new_target(self.novelty_target,
+                                                             self.novelty_bounds,
+                                                             self.novelty_drift_amount)
+                self._drift_novelty_list = _compute_drift_waypoints(
+                    self.novelty_target,
+                    self._drift_novelty_target,
+                    self.drifting_speed)
+                self._log(logging.DEBUG,
+                          "Set NOV drifting target to {:3.f}".format(
+                              self._drift_aest_target))
+
+            self._is_drifting = True
+
+    def drift_towards_targets(self):
+        """Drift aesthetic and novelty values towards their current targets.
+        """
+        if self._drift_aest_list is not None:
+            nx_target = self._drift_aest_list.pop(0)
+            if self.aesthetic_noise > 0.0:
+                nx_target += np.random.normal(0.0, scale=self.aesthetic_noise)
+            self.aesthetic_target = nx_target
+            self._log(logging.DEBUG, "AES to {:3.f} (target={:3.f}, i={}"
+                      .format(self.aesthetic_target,
+                              self._drift_aest_target,
+                              len(self._drift_aest_list)))
+        if self._drift_novelty_list is not None and self.novelty_target is not None:
+            self.novelty_target = self._drift_novelty_list.pop(0)
+            if self.novelty_noise > 0.0:
+                self.novelty_target += np.random.normal(0.0,
+                                                        scale=self.novelty_noise)
+            self._log(logging.DEBUG, "NOV to {:3.f} (target={:3.f}, i={}"
+                      .format(self._novelty_target,
+                              self._drift_novelty_target,
+                              len(self._drift_novelty_list)))
+
+        if len(self._drift_aest_list) == 0:
+            self._is_drifting = False
+            self._drift_aest_list = None
+            self._drift_novelty_list = None
+            self._log(logging.DEBUG, "Stopped drifting.")
+
+    @aiomas.expose
+    async def act(self, *args, **kwargs):
+        r = random.random()
+        if r < self.drifting_prob:
+            self.change_targets()
+        if self._is_drifting:
+            self.drift_towards_targets()
+        #super().act(*args, **kwargs)
 
 
 class CollabSimulation(Simulation):

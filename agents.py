@@ -122,6 +122,7 @@ class FeatureAgent(RuleAgent):
             return artifact.evals[self.name], artifact.framings[self.name]
 
         value, _ = super().evaluate(artifact)
+        print("FeatureAgent V:{} ".format(value))
         if self.novelty_weight == -1:
             fr = {'value': value, 'novelty': None}
             artifact.add_eval(self, value, fr)
@@ -631,7 +632,7 @@ class GPImageAgent(FeatureAgent):
         self.toolbox.register("evaluate", GIA.evaluate, agent=self,
                               shape=self.shape)
 
-        self.max_value = -1
+        self.max_value = 0.0000000000000000000001
         self.save_id = 1
         if save_folder is not None:
             self.artifact_save_folder = os.path.join(save_folder,
@@ -701,7 +702,11 @@ class GPImageAgent(FeatureAgent):
                 artifact.add_eval(self, evaluation, fr)
                 return evaluation, fr
 
-        value, _ = super().evaluate(artifact)
+        # Call RuleAgent's evaluate, not FeatureAgent's!
+        # Otherwise FeatureAgent will include novelty into the evaluation if
+        # the novelty weight != -1. This will then affect the observed value
+        # and mess up the value-based predictions.
+        value, _ = super(FeatureAgent, self).evaluate(artifact)
         evaluation = value
         if self.novelty_weight != -1:
             novelty = float(self.novelty(artifact))
@@ -711,7 +716,9 @@ class GPImageAgent(FeatureAgent):
             self.max_value = value
 
         norm_value = value / self.max_value
-        normalized_evaluation = (1.0 - self.novelty_weight) * norm_value + self.novelty_weight * novelty
+        normalized_evaluation = norm_value
+        if self.novelty_weight != -1:
+            normalized_evaluation = (1.0 - self.novelty_weight) * norm_value + self.novelty_weight * novelty
 
         fr = {'value': value,
               'novelty': novelty,

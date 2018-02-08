@@ -139,11 +139,23 @@ class ImageEntropyFeature(Feature):
     """Compute entropy of an image and normalize it to interval [0, 1].
 
     Entropy computation uses 256 bins and a grey scale image.
+
+    :param float target:
+        Target value for the entropy value. If ``None``, maximizes entropy,
+        otherwise the feature's value is higher the closer to the target value
+        the computed entropy is.
+    :param tuple bounds:
+        Bounds for target entropy value. Used to compute the feature's value
+        when ``target is not None``.
     """
-    def __init__(self):
+    MIN = 0.0
+    # Max entropy for 256 bins, i.e. the histogram has even distribution
+    MAX = 5.5451774444795623
+
+    def __init__(self, normalize=False):
         super().__init__('image_entropy', ['image'], float)
-        # Max entropy for 256 bins, i.e. the histogram has even distribution
-        self.max = 5.5451774444795623
+        self._normalize = normalize
+
 
     def extract(self, artifact):
         img = artifact.obj
@@ -156,7 +168,11 @@ class ImageEntropyFeature(Feature):
         hg = hg / (img.shape[0] * img.shape[1])
         # Compute entropy based on bin probabilities
         e = -np.sum([hg[i] * np.log(hg[i]) for i in range(len(hg)) if hg[i] > 0.0])
-        return float(e) / self.max
+        e = float(e)
+        if self._normalize:
+            return e / ImageEntropyFeature.MAX
+        else:
+            return e
 
 
 class ImageComplexityFeature(Feature):
@@ -164,6 +180,10 @@ class ImageComplexityFeature(Feature):
 
     The color values must be in range [0, 255] and type ``int``.
     """
+    MIN = 0.0
+    # This is very loose upperbound, probably closer to 2.3
+    MAX = 3.0
+
     def __init__(self):
         super().__init__('image_complexity', ['image'], float)
 
@@ -182,7 +202,7 @@ class ImageFDAestheticsFeature(Feature):
     is to 1.35. The precise value function is ``max(0, 1 - |1.35 - fd(I)|)``.
     """
     def __init__(self):
-        super().__init__('image_complexity', ['image'], float)
+        super().__init__('image_fdaesthetics', ['image'], float)
 
     def extract(self, artifact):
         img = artifact.obj
