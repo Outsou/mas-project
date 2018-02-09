@@ -127,6 +127,7 @@ class CollaborationBaseAgent(GPImageAgent):
         # Learning model by which collaboration partners are chosen
         self.collab_model = kwargs.pop('collab_model', 'random')
         self.collab_iters = kwargs.pop('collab_iters', 10)
+        self.q_bins = kwargs.pop('q_bins', 20)
         super().__init__(*args, **kwargs)
         self.in_collab = False  # Is the agent currently in collaboration
         self.caddr = None       # Address of the collaboration agent if any
@@ -144,6 +145,11 @@ class CollaborationBaseAgent(GPImageAgent):
             self.learner = MultiLearner(list(self.connections),
                                         len(self.R),
                                         e=0)
+        elif self.collab_model ==  'state-Q':
+            self.learner = MultiLearner(list(self.connections),
+                                        len(self.R),
+                                        e=0,
+                                        q_bins=self.q_bins)
         else:
             self.learner = MultiLearner(list(self.connections),
                                         len(self.R))
@@ -313,6 +319,9 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             features.append(rule.feat(artifact))
         return features
 
+    def _target_to_state(self):
+        raise NotImplementedError("Not implemented.")
+
     @aiomas.expose
     async def get_collab_prefs(self):
         """Return a list of possible collaboration partners sorted in their
@@ -329,6 +338,9 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         if self.collab_model in ['Q0', 'Q1', 'Q2', 'Q3']:
             partners = self.learner.bandit_choose(get_list=True)
 
+        if self.collab_model == 'state-Q':
+            partners = self.learner.q_choose(self._target_to_state(), get_list=True)
+
         if self.collab_model == 'lr':
             feats = []
             for ind in self.collab_pop:
@@ -336,7 +348,6 @@ class GPCollaborationAgent(CollaborationBaseAgent):
                 feats.append(self.get_features(art))
             partners = self.learner.linear_choose_multi(feats)
 
-        # TODO:
         # if self.collab_model == 'gaussian':
         #     partners = self.learner.gaussian_choose(target, get_list=True)
 
@@ -772,7 +783,13 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         if len(artifact.creator.split(' - ')) == 1:
             if self.collab_model == 'Q2':
                 self.learner.update_bandit(e, artifact.creator)
-            # TODO:
+            elif self.collab_model == 'state-Q':
+                for i in range(self.q_bins):
+                    mapper = self.q_state_mappers[i]
+                    val = mapper(fr['feat_val'])
+                    self.learner.update_q(val, artifact.creator, i)
+
+
             # if self.collab_model == 'gaussian':
             #     self.learner.update_gaussian(fr['value'], artifact.creator)
 
@@ -928,6 +945,33 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         self.collab_arts['mtgt'] = []           # Modified target for aesthetic value (or same as 'tgt')
         self.collab_arts['ctgt'] = []           # Collaborators (modified) target for aesthetic value
 
+        # Create mappers for bin middle points
+        self.q_state_mappers = []
+        bin_size = (self.aesthetic_bounds[1] - self.aesthetic_bounds[0]) / self.q_bins
+        for i in range(self.q_bins):
+            start = self.aesthetic_bounds[0] + i * bin_size
+            end = start + bin_size
+            target = (start + end) / 2
+            mapper, _ = self._create_mapper(target)
+            self.q_state_mappers.append(mapper)
+
+    def _create_mapper(self, new_target):
+        """Creates a new double linear mapper."""
+        if self.aesthetic == 'entropy':
+            feat = ImageEntropyFeature
+        elif self.aesthetic == 'complexity':
+            feat = ImageComplexityFeature
+        else:
+            raise ValueError("Aesthetic '{}' not recognized"
+                             .format(self.aesthetic))
+        dlm = DoubleLinearMapper(feat.MIN, new_target, feat.MAX)
+        return dlm, feat
+
+    def _target_to_state(self):
+        """Maps current aesthetic target to a state."""
+        dists = [abs(x._mid - self.aesthetic_target) for x in self.q_state_mappers]
+        return np.argmin(dists)
+
     def append_oa(self, artifact):
         super().append_oa(artifact)
         self.own_arts['tgt'].append(self.aesthetic_target)
@@ -958,14 +1002,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             new_target = self.aesthetic_bounds[1]
 
         self._aesthetic_target = new_target
-        if self.aesthetic == 'entropy':
-            feat = ImageEntropyFeature
-        elif self.aesthetic == 'complexity':
-            feat = ImageComplexityFeature
-        else:
-            raise ValueError("Aesthetic '{}' not recognized"
-                             .format(self.aesthetic))
-        dlm = DoubleLinearMapper(feat.MIN, new_target, feat.MAX)
+        dlm, feat = self._create_mapper(new_target)
         self.R[0] = RuleLeaf(feat(), dlm)
         self.W[0] = 1.0
 
@@ -1004,8 +1041,8 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                                                              self._drift_aest_target,
                                                              self.drifting_speed)
             self._log(logging.DEBUG,
-                      "Set AES drifting target to {:3.f}".format(
-                          self._drift_aest_target))
+                      "Set AES drifting target to {:.3f}".format(
+                          float(self._drift_aest_target)))
             if self.novelty_target is not None:
                 self._drift_novelty_target = _get_new_target(self.novelty_target,
                                                              self.novelty_bounds,
@@ -1015,7 +1052,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                     self._drift_novelty_target,
                     self.drifting_speed)
                 self._log(logging.DEBUG,
-                          "Set NOV drifting target to {:3.f}".format(
+                          "Set NOV drifting target to {:.3f}".format(
                               self._drift_aest_target))
 
             self._is_drifting = True
@@ -1028,7 +1065,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             if self.aesthetic_noise > 0.0:
                 nx_target += np.random.normal(0.0, scale=self.aesthetic_noise)
             self.aesthetic_target = nx_target
-            self._log(logging.DEBUG, "AES to {:3.f} (target={:3.f}, i={}"
+            self._log(logging.DEBUG, "AES to {:.3f} (target={:.3f}, i={}"
                       .format(self.aesthetic_target,
                               self._drift_aest_target,
                               len(self._drift_aest_list)))
@@ -1037,8 +1074,8 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             if self.novelty_noise > 0.0:
                 self.novelty_target += np.random.normal(0.0,
                                                         scale=self.novelty_noise)
-            self._log(logging.DEBUG, "NOV to {:3.f} (target={:3.f}, i={}"
-                      .format(self._novelty_target,
+            self._log(logging.DEBUG, "NOV to {:.3f} (target={:.3f}, i={}"
+                      .format(self.novelty_target,
                               self._drift_novelty_target,
                               len(self._drift_novelty_list)))
 
@@ -1049,13 +1086,78 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             self._log(logging.DEBUG, "Stopped drifting.")
 
     @aiomas.expose
+    def evaluate(self, artifact, use_png_compression=True):
+        """Evaluates an artifact based on value (and novelty).
+
+        :param bool use_png_compression:
+            If ``True`` checks artifact's compression ratio with PNG. If
+            resulting image is too small (compresses too much w.r.t. original),
+            gives evaluation 0.0 for the image.
+        """
+        if self.name in artifact.evals:
+            return artifact.evals[self.name], artifact.framings[self.name]
+
+        evaluation = value = 0.0
+        novelty = None
+
+        # Test png image compression. If image is compressed to less that 8% of
+        # the original (bmp image has 1078 bytes overhead in black & white
+        # images), then the image is deemed too simple and evaluation is 0.0.
+        if use_png_compression and not artifact.png_compression_done:
+            png_ratio = GIA.png_compression_ratio(artifact)
+            artifact.png_compression_done = True
+            if png_ratio < 0.08:
+                fr = {'value': value,
+                      'novelty': 0.0,
+                      'pass_novelty': False,
+                      'pass_value': False,
+                      'max_value': self.max_value,
+                      'norm_value': 0.0,
+                      'norm_evaluation': 0.0,
+                      'aesthetic': self.aesthetic,
+                      'feat_val': 0.0,
+                      'aest_target': self.aesthetic_target
+                      }
+                artifact.add_eval(self, evaluation, fr)
+                return evaluation, fr
+
+        feat_val = self.R[0].feat.extract(artifact)
+        value = self.R[0].mapper(feat_val)
+        evaluation = value
+        if self.novelty_weight != -1:
+            novelty = float(self.novelty(artifact))
+            evaluation = (1.0 - self.novelty_weight) * value + self.novelty_weight * novelty
+
+        if self.max_value < value:
+            self.max_value = value
+
+        norm_value = value / self.max_value
+        normalized_evaluation = norm_value
+        if self.novelty_weight != -1:
+            normalized_evaluation = (1.0 - self.novelty_weight) * norm_value + self.novelty_weight * novelty
+
+        fr = {'value': value,
+              'novelty': novelty,
+              'pass_novelty': bool(novelty >= self._novelty_threshold) if novelty is not None else False,
+              'pass_value': bool(value >= self._value_threshold),
+              'max_value': self.max_value,
+              'norm_value': norm_value,
+              'norm_evaluation': normalized_evaluation,
+              'aesthetic': self.aesthetic,
+              'feat_val': feat_val,
+              'aest_target': self.aesthetic_target
+              }
+        artifact.add_eval(self, evaluation, fr)
+        return evaluation, fr
+
+    @aiomas.expose
     async def act(self, *args, **kwargs):
         r = random.random()
         if r < self.drifting_prob:
             self.change_targets()
         if self._is_drifting:
             self.drift_towards_targets()
-        #super().act(*args, **kwargs)
+        await super().act(*args, **kwargs)
 
 
 class CollabSimulation(Simulation):

@@ -29,7 +29,8 @@ class DriftTestAgent(DriftingGPCollaborationAgent):
         memsize = coe.DEFAULT_PARAMS['mem_size']
         search_width = coe.DEFAULT_PARAMS['search_width']
         shape = coe.DEFAULT_PARAMS['shape']
-        collab_model = coe.DEFAULT_PARAMS['model']  # Learning model
+        # collab_model = coe.DEFAULT_PARAMS['model']  # Learning model
+        collab_model = 'state-Q'
         output_shape = coe.DEFAULT_PARAMS['output_shape']
         aesthetics = [aesthetic]
         if aesthetic == 'entropy':

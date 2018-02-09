@@ -1282,7 +1282,7 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         img_name = None
         if model == 'random':
             img_name = 'random_aest_vals.png'
-        make_aest_val_table_and_image(own_art_stats, ind_eval_stats, pairs, collab_eval_stats, format_s, img_name)
+        # make_aest_val_table_and_image(own_art_stats, ind_eval_stats, pairs, collab_eval_stats, format_s, img_name)
         print()
 
         # Create image of aesthetic pair count, success ratio and mean rank

@@ -14,7 +14,7 @@ class MultiLearner():
 
     def __init__(self, addrs, num_of_features, std=None,
                  centroid_rate=0.01, weight_rate=0.2, e=0.2, reg_weight=0.5, gauss_mem=10,
-                 q_states=None, q_init_val = 0.8):
+                 q_bins=None, q_init_val = 0.8):
         """
         :param list addrs:
             Addresses of the agents that are modeled.
@@ -61,12 +61,12 @@ class MultiLearner():
             self.poly_weights[addr] = np.array([0.5] * poly_len)
             self.gaussians[addr] = {'mean': 0.5, 'var': 0.08, 'vals': []}
 
-        if q_states is not None:
+        if q_bins is not None:
             self.q_vals = {}
-            for q_state in q_states:
-                self.q_vals[q_state] = {}
+            for i in range(q_bins):
+                self.q_vals[i] = {}
                 for addr in addrs:
-                    self.q_vals[q_state][addr] = q_init_val
+                    self.q_vals[i][addr] = q_init_val
 
         if std is not None:
             self.max = gaus_pdf(1, 1, std)
