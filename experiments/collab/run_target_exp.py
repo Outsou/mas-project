@@ -310,7 +310,11 @@ if __name__ == "__main__":
                              "Q3: Reward is own artifact's evaluation by another agent. Who likes my artifacts?\n"
                              "lr: Trains a linear regression model for each neighbour based on both evaluations of "
                              "own artifacts by the neighbour and the neighbour's evaluations of its own artifacts."
-                             "Who would like the artifacts in this initial population I have created?")
+                             "Who would like the artifacts in this initial population I have created?\n"
+                             "state-Q: Reward is own evaluation of artifact created by another agent. Evaluation is "
+                             "done simultaneously with multiple different targets, which are mapped to states for "
+                             "Q-learning. How much would I like other agents' artifacts, if I had a different target "
+                             "for my evaluation function?")
     parser.add_argument('-n', metavar='novelty', type=int, dest='novelty',
                         help="Novelty weight.", default=0.5)
     parser.add_argument('-q', metavar='drift amount', type=float,
