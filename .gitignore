@@ -87,5 +87,6 @@ screenlog.*
 runs_old/
 *.tar.gz
 *.pdf
+*.orig
 
 tnovelty.py

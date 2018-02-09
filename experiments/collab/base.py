@@ -857,17 +857,6 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
         return self.aesthetic, self.own_arts, self.own_evals, self.collab_arts, self.collab_evals
 
-    # @aiomas.expose
-    # def close(self, folder=None):
-    #     aest_counts = {}
-    #     for art in self.collab_arts:
-    #         other_aest = art['other_aest']
-    #         if other_aest not in aest_counts:
-    #             aest_counts[other_aest] = 1
-    #         else:
-    #             aest_counts[other_aest] += 1
-    #     self._log(logging.INFO, str(aest_counts))
-
 
 class DriftingGPCollaborationAgent(GPCollaborationAgent):
     """GP collaboration agent which changes its preferences during the
@@ -882,34 +871,40 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         between ``aesthetic_bounds``. If it equals to ``"random"``, then
         a random value between given ``aesthetic_bounds`` is chosen.
     :param tuple aesthetic_bounds:
-        Bounds for aesthetic's target value as a tuple ``(min, max)``.
+        Bounds for aesthetic's target value as a tuple ``(min, max)``. This
+        restricts only the agent's own target values movement. The aesthetic
+        measure itself may take values outside these bounds.
     :param float novelty_target:
         The initial target value for novelty. If ``None``, maximizes novelty and
-        does not change the target during the agent's life time.
+        does not change the target during the agent's life time. Default is
+        ``None``.
     :param tuple novelty_bounds:
         Bounds for target novelty value. Ignored if ``novelty_target == None``.
     :param float drifting_prob:
-        Probability to start drifting on each iteration.
+        Probability to start drifting on each iteration. Default is 0.05.
     :param int drifting_speed:
         How many iterations the drifting takes to reach its target.
+        Default is 1.
 
     """
     def __init__(self, *args, **kwargs):
         # Current target value and bounds for the aesthetic function. Different
         # aesthetic functions may have different initial targets and bounds.
-        self._aesthetic_target = kwargs.pop('aesthetic_target', 1.35)
+        self._aesthetic_target = kwargs.pop('aesthetic_target')
         # Target value bounds for the given aesthetic. The aesthetic's objective
         # values should surpass these bounds at least by some epsilon > 0.
-        self.aesthetic_bounds = kwargs.pop('aesthetic_bounds', (1.1, 1.9))
+        self.aesthetic_bounds = kwargs.pop('aesthetic_bounds')
         if self._aesthetic_target == 'random':
             self._aesthetic_target = random.uniform(*self.aesthetic_bounds)
         # Noise applied to the aesthetic target on each iteration
         self.aesthetic_noise = kwargs.pop('aesthetic_noise', 0.0)
-        # The scale of aesthetic target's drift. Uses normal distribution with
-        # this scale.
+        # The amount of aesthetic target's drift, this is scaled using the
+        # aesthetic bound. The target is drifted by sampling from a normal
+        # distribution with mean in the current target the scale determined by
+        # the bounds and the drift amount.
         self.aesthetic_drift_amount = kwargs.pop('aesthetic_drift_amount', 0.2)
         # Current target and bounds for the novelty measure
-        self.novelty_target = kwargs.pop('novelty_target', 0.4)
+        self.novelty_target = kwargs.pop('novelty_target', None)
         self.novelty_bounds = kwargs.pop('novelty_bounds', (0.1, 0.6))
         # Noise applied to the novelty target on each iteration
         self.novelty_noise = kwargs.pop('novelty_noise', 0.0)
@@ -918,7 +913,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         # targets are already drifting, is omitted.)
         self.drifting_prob = kwargs.pop('drifting_prob', 0.05)
         # How many iterations it takes to drift to the new target.
-        self.drifting_speed = kwargs.pop('drifting_speed', 5)
+        self.drifting_speed = kwargs.pop('drifting_speed', 1)
         super().__init__(*args, **kwargs)
 
         # Set aesthetic target to modify **R** with the current bounds.
@@ -940,10 +935,10 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         self._drift_novelty_list = None
 
         # Modify inherited data structures for saving artifacts.
-        self.own_arts['tgt'] = []               # Target for aesthetic value
-        self.collab_arts['tgt'] = []            # Unmodified target for aesthetic value
-        self.collab_arts['mtgt'] = []           # Modified target for aesthetic value (or same as 'tgt')
-        self.collab_arts['ctgt'] = []           # Collaborators (modified) target for aesthetic value
+        self.own_arts['tgt'] = []       # Target for aesthetic value
+        self.collab_arts['tgt'] = []    # Unmodified target for aesthetic value
+        self.collab_arts['mtgt'] = []   # Modified target for aesthetic value (or same as 'tgt')
+        self.collab_arts['ctgt'] = []   # Collaborators (modified) target for aesthetic value
 
         # Create mappers for bin middle points
         self.q_state_mappers = []
@@ -983,18 +978,21 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             self.collab_arts['mtgt'].append(self.aesthetic_target)
             self.collab_arts['ctgt'].append(ctgt)
 
+    @aiomas.expose
+    def get_aesthetic_target(self):
+        return self.aesthetic_target
+
     @property
     def aesthetic_target(self):
         return self._aesthetic_target
 
     @aesthetic_target.setter
     def aesthetic_target(self, new_target):
-        """Set the aesthetic target by creating a new :class:`RuleLeaf` and
-        replacing the first rule in **R** with it.
+        """Set the aesthetic target of the agent, bounded by
+        ``aesthetic_bounds``.
 
-        Also **W[0]** is set to 1.0.
-
-        The new target is bounded by ``aesthetic_bounds``.
+        Aesthetic target is set by removing the first rule from **R** and
+        creating a new :class:`RuleLeaf` which added to **R** with weight 1.0.
         """
         if new_target < self.aesthetic_bounds[0]:
             new_target = self.aesthetic_bounds[0]
@@ -1003,8 +1001,8 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
 
         self._aesthetic_target = new_target
         dlm, feat = self._create_mapper(new_target)
-        self.R[0] = RuleLeaf(feat(), dlm)
-        self.W[0] = 1.0
+        self.remove_rule(self.R[0])
+        self.add_rule(RuleLeaf(feat(), dlm), 1.0)
 
     def change_targets(self):
         """Change aesthetic and novelty targets if they are not currently
@@ -1019,9 +1017,16 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         def _get_new_target(cur_target, bounds, drift_amount):
             # Create new drifting target within the bounds
             while True:
-                nt = cur_target + np.random.normal(0.0, scale=drift_amount)
-                if bounds[0] <= nt <= bounds[1]:
-                    return nt
+                # Scale drifting with absolute bound width.
+                bdiff = bounds[1] - bounds[0]
+                scale = drift_amount * bdiff
+                ddiff = np.random.normal(0.0, scale=scale)
+                nt = cur_target + ddiff
+                if nt < bounds[0]:
+                    return bounds[0]
+                if nt > bounds[1]:
+                    return bounds[1]
+                return nt
 
         def _compute_drift_waypoints(cur_target, drift_target, n_waypoints):
             """Compute linear drifting waypoints.
@@ -1152,6 +1157,14 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
 
     @aiomas.expose
     async def act(self, *args, **kwargs):
+        ret = await super().act(*args, **kwargs)
+
+        # Drifting after the artifact creation so that the collaboration is not
+        # affected by drifting before it.
+
+        # REALLY, this should be done after all the agents have sent their
+        # current step's artifacts to their peers for evaluation. (That is,
+        # in environment's post callback.)
         r = random.random()
         if r < self.drifting_prob:
             self.change_targets()
@@ -1330,12 +1343,15 @@ class CollabEnvironment(StatEnvironment):
                 mcvalue /= mfound
                 mfound /= coa
 
+        meval_ratio = meval/mceval if mceval > 0.0 else 0.0
+        mnovelty_ratio = mnovelty/mcnovelty if mcnovelty > 0.0 else 0.0
+        mvalue_ratio = mvalue/mcvalue if mcvalue > 0.0 else 0.0
         self._log(logging.INFO, "{} {} (ind/col): arts={}/{} fb={:.3f} "
                   "e={:.3f}/{:.3f} ({:.3f}) n={:.3f}/{:.3f} ({:.3f}) "
                   "v={:.3f}/{:.3f} ({:.3f})".format(
-            agent, aest, loa, cfound, mfound, meval, mceval, meval/mceval,
-            mnovelty, mcnovelty, mnovelty/mcnovelty, mvalue, mcvalue,
-            mvalue/mcvalue))
+            agent, aest, loa, cfound, mfound, meval, mceval, meval_ratio,
+            mnovelty, mcnovelty, mnovelty_ratio, mvalue, mcvalue,
+            mvalue_ratio))
 
     def analyse_all(self):
         async def slave_task(addr):
