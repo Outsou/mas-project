@@ -490,7 +490,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         """
         self._log(logging.DEBUG,
                   "start collab with {} (i={})"
-                  .format(self.addr, self.caddr, max_iter))
+                  .format(self.caddr, max_iter))
         r_agent = await self.connect(self.caddr)
         cagent_init_arts = await r_agent.get_collab_pop()
         cagent_init_pop = self.arts2pop(cagent_init_arts)
