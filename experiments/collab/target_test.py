@@ -18,7 +18,7 @@ class DriftTestAgent(DriftingGPCollaborationAgent):
     def __init__(self,
                  *args,
                  aesthetic='entropy',
-                 aesthetic_bounds=[2.0, 5.5452],
+                 aesthetic_bounds=[2.0, 5.5451],
                  aesthetic_target=3.0,
                  **kwargs):
         super_pset = coe.create_super_pset(bw=True)
