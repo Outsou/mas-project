@@ -141,11 +141,11 @@ class CollaborationBaseAgent(GPImageAgent):
         rets = super().add_connections(conns)
 
         # Initialize the multi-model learner
-        if self.collab_model in ['Q2', 'Q3', 'lr']:
+        if self.collab_model in ['altruistic-Q', 'hedonic-Q', 'lr']:
             self.learner = MultiLearner(list(self.connections),
                                         len(self.R),
                                         e=0)
-        elif self.collab_model ==  'state-Q':
+        elif self.collab_model == 'state-Q':
             self.learner = MultiLearner(list(self.connections),
                                         len(self.R),
                                         e=0,
