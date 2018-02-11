@@ -335,7 +335,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             partners = list(self.connections.keys())
             random.shuffle(partners)
 
-        if self.collab_model in ['Q0', 'Q1', 'Q2', 'Q3']:
+        if self.collab_model in ['Q0', 'simple-Q', 'altruistic-Q', 'hedonic-Q']:
             partners = self.learner.bandit_choose(get_list=True)
 
         if self.collab_model == 'state-Q':
@@ -605,10 +605,6 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             pop, hof_arts = self.finish_collab(population)
             ret_arts = self.pop2arts(pop)
             return ret_arts, hof_arts, iter + 1
-        # elif iter == 1:
-        #     pop, iter = await self.collab_first_iter(population, iter)
-        #     ret_arts = self.pop2arts(pop)
-        #     return ret_arts, iter
         else:
             pop, iter = await self.continue_collab(population, iter)
             ret_arts = self.pop2arts(pop)
@@ -623,7 +619,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         and as agents are altruistic, this agent accepts it as it is.
         """
         if artifact is None:
-            if self.collab_model in ['Q0', 'Q1']:
+            if self.collab_model in ['Q0', 'simple-Q']:
                 self.learner.update_bandit(0, self.caddr)
             self.append_coa(False, aesthetic, None)
             return None
@@ -654,11 +650,10 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
     @aiomas.expose
     async def act_collab(self, *args, **kwargs):
-        """Agent's act when it is time to collaborate.
+        """Collaboration act.
 
-        :param args:
-        :param kwargs:
-        :return:
+        This method returns immediately (and no collaboration is done) if
+        ``cinit == False``.
         """
         # Only the collaboration initiators actually act. Others react to them.
         if not self.cinit:
@@ -705,7 +700,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             self.append_coa(True, caest, art)
             self.last_artifact = art
         else:
-            if self.collab_model in ['Q0', 'Q1']:
+            if self.collab_model in ['Q0', 'simple-Q']:
                 self.learner.update_bandit(0, self.caddr)
 
             r_agent = await self.connect(self.caddr)
@@ -763,9 +758,8 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         # Do not learn artifact again if it has been shown already.
         if self.name in artifact.framings:
             if self.caddr is not None:
-                if self.collab_model == 'Q1':
+                if self.collab_model == 'simple-Q':
                     self.learner.update_bandit(artifact.evals[self.name], self.caddr)
-
                 if self.collab_model == 'Q0':
                         self.learner.update_bandit(1, self.caddr)
 
@@ -781,7 +775,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         e, fr = self.evaluate(artifact)
 
         if len(artifact.creator.split(' - ')) == 1:
-            if self.collab_model == 'Q2':
+            if self.collab_model == 'hedonic-Q':
                 self.learner.update_bandit(e, artifact.creator)
             elif self.collab_model == 'state-Q':
                 for i in range(self.q_bins):
@@ -804,9 +798,9 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
     @aiomas.expose
     def rcv_evaluations_from_artifact(self, artifact, evaluations):
-        """LEARN MODEL HERE IF NEEDED.
+        """Receive evaluations (done by peers) from an own artifact.
 
-        :param str aid: Artifact ID
+        :param artifact: Artifact the evaluations belong to
 
         :param dict evaluations:
            Keys are addresses and values are evaluation, framing pairs.
@@ -820,20 +814,14 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         addrs.remove('creator')
         addrs.remove(self.addr)
 
-        # TODO: These learn now also from collaborated artifacts?
-        if self.collab_model == 'Q3' and artifact.creator == self.addr:
-            #self._log(logging.INFO, "Jep!!! {}".format(artifact.creator))
-            for addr in addrs:
+        for addr in addrs:
+            if self.collab_model == 'altruistic-Q' and artifact.creator == self.addr:
                 self.learner.update_bandit(evaluations[addr][1]['norm_evaluation'], addr)
-            return
-
-        if self.collab_model == 'lr':
-            feats = self.get_features(artifact)
-            for addr in addrs:
+            elif self.collab_model == 'lr':
+                feats = self.get_features(artifact)
                 self.learner.update_linear_regression(evaluations[addr][1]['norm_evaluation'],
                                                       addr,
                                                       feats)
-            return
 
     @aiomas.expose
     def get_last_artifact(self):
@@ -1046,8 +1034,8 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                                                              self._drift_aest_target,
                                                              self.drifting_speed)
             self._log(logging.DEBUG,
-                      "Set AES drifting target to {:.3f}".format(
-                          float(self._drift_aest_target)))
+                      "Set AES drifting target to {:.3f} (from {:.3f})".format(
+                          float(self._drift_aest_target), self.aesthetic_target))
             if self.novelty_target is not None:
                 self._drift_novelty_target = _get_new_target(self.novelty_target,
                                                              self.novelty_bounds,
@@ -1057,8 +1045,8 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                     self._drift_novelty_target,
                     self.drifting_speed)
                 self._log(logging.DEBUG,
-                          "Set NOV drifting target to {:.3f}".format(
-                              self._drift_aest_target))
+                          "Set NOV drifting target to {:.3f} (from {:.3f})".format(
+                              self._drift_aest_target, self.novelty_target))
 
             self._is_drifting = True
 
@@ -1070,7 +1058,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             if self.aesthetic_noise > 0.0:
                 nx_target += np.random.normal(0.0, scale=self.aesthetic_noise)
             self.aesthetic_target = nx_target
-            self._log(logging.DEBUG, "AES to {:.3f} (target={:.3f}, i={}"
+            self._log(logging.DEBUG, "AES to {:.3f} (target={:.3f}, i={})"
                       .format(self.aesthetic_target,
                               self._drift_aest_target,
                               len(self._drift_aest_list)))
@@ -1079,7 +1067,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             if self.novelty_noise > 0.0:
                 self.novelty_target += np.random.normal(0.0,
                                                         scale=self.novelty_noise)
-            self._log(logging.DEBUG, "NOV to {:.3f} (target={:.3f}, i={}"
+            self._log(logging.DEBUG, "NOV to {:.3f} (target={:.3f}, i={})"
                       .format(self.novelty_target,
                               self._drift_novelty_target,
                               len(self._drift_novelty_list)))
@@ -1170,7 +1158,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             self.change_targets()
         if self._is_drifting:
             self.drift_towards_targets()
-        await super().act(*args, **kwargs)
+        return ret
 
 
 class CollabSimulation(Simulation):
@@ -1346,10 +1334,10 @@ class CollabEnvironment(StatEnvironment):
         meval_ratio = meval/mceval if mceval > 0.0 else 0.0
         mnovelty_ratio = mnovelty/mcnovelty if mcnovelty > 0.0 else 0.0
         mvalue_ratio = mvalue/mcvalue if mcvalue > 0.0 else 0.0
-        self._log(logging.INFO, "{} {} (ind/col): arts={}/{} fb={:.3f} "
+        self._log(logging.INFO, "{} {:<10} (ind/col): arts={}/{} fb={:.3f} "
                   "e={:.3f}/{:.3f} ({:.3f}) n={:.3f}/{:.3f} ({:.3f}) "
                   "v={:.3f}/{:.3f} ({:.3f})".format(
-            agent, aest, loa, cfound, mfound, meval, mceval, meval_ratio,
+            agent, aest.upper(), loa, cfound, mfound, meval, mceval, meval_ratio,
             mnovelty, mcnovelty, mnovelty_ratio, mvalue, mcvalue,
             mvalue_ratio))
 
