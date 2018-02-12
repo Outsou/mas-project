@@ -1,3 +1,6 @@
+"""Small script to check how entropy and complexity evaluate each others
+artifacts with different targets.
+"""
 import logging
 import pickle
 
