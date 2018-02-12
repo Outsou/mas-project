@@ -1,4 +1,5 @@
 import logging
+import pickle
 
 import aiomas
 import numpy as np
@@ -20,6 +21,8 @@ class DriftTestAgent(DriftingGPCollaborationAgent):
                  aesthetic='entropy',
                  aesthetic_bounds=[2.0, 5.5451],
                  aesthetic_target=3.0,
+                 entropy_targets=None,
+                 complexity_targets=None,
                  **kwargs):
         super_pset = coe.create_super_pset(bw=True)
         critic_threshold = coe.DEFAULT_PARAMS['critic_threshold']
@@ -46,6 +49,22 @@ class DriftTestAgent(DriftingGPCollaborationAgent):
         self.gen_aests = []
         self.imf = ImageComplexityFeature()
         self.ief = ImageEntropyFeature()
+        self.complexity_targets = complexity_targets
+        self.entropy_targets = entropy_targets
+
+        self.imf_mappers = {t: DoubleLinearMapper(ImageComplexityFeature.MIN, t,
+                                                  ImageComplexityFeature.MAX,
+                                                  '01') for t in
+                            complexity_targets}
+        self.ief_mappers = {t: DoubleLinearMapper(ImageEntropyFeature.MIN, t,
+                                                  ImageEntropyFeature.MAX,
+                                                  '01') for t in
+                            entropy_targets}
+
+        self.mapped_values = {
+            'entropy': {t: {e: [] for e in complexity_targets} for t in entropy_targets},
+            'complexity': {t: {e: [] for e in entropy_targets} for t in complexity_targets},
+        }
 
         super().__init__(
             *args,
@@ -79,6 +98,26 @@ class DriftTestAgent(DriftingGPCollaborationAgent):
             return self.imf.extract(artifact)
         return 0.0
 
+    def _evaluate_with(self, artifact, feat, mapper):
+        return mapper(feat.extract(artifact))
+
+    def _map_value(self, artifact):
+        if self.aesthetic == 'entropy':
+            for imf_target, mapper in self.imf_mappers.items():
+                value = self._evaluate_with(artifact, self.imf, mapper)
+                self.mapped_values['entropy'][self.aesthetic_target][imf_target].append(value)
+                print("Entropy {} mapped for complexity {}: {}".format(
+                    self.aesthetic_target, imf_target, value))
+
+        if self.aesthetic == 'complexity':
+            for ief_target, mapper in self.ief_mappers.items():
+                value = self._evaluate_with(artifact, self.ief, mapper)
+                self.mapped_values['complexity'][self.aesthetic_target][ief_target].append(value)
+                print("Complexity {} mapped for entropy {}: {}".format(
+                    self.aesthetic_target, ief_target, value))
+
+
+
     @aiomas.expose
     async def act(self, *args, **kwargs):
         self.age += 1
@@ -86,6 +125,7 @@ class DriftTestAgent(DriftingGPCollaborationAgent):
         artifact = artifacts[0][0]
 
         obj_value = self._get_aest_value(artifact)
+        self._map_value(artifact)
 
         e, fr = self.evaluate(artifact)
         n = None if fr['novelty'] is None else np.around(fr['novelty'], 2)
@@ -99,22 +139,63 @@ class DriftTestAgent(DriftingGPCollaborationAgent):
         self.learn(artifact)
         aid = get_aid(self.addr, self.age, self.aesthetic, v, n)
         artifact.aid = aid
-        self.save_artifact(artifact, pset=self.super_pset, aid=aid)
+        #self.save_artifact(artifact, pset=self.super_pset, aid=aid)s
+
+    def save_mapped_values(self):
+        with open('mapped_values.pkl', 'wb') as f:
+            pickle.dump(self.mapped_values, f)
+
+
+def aesthetic_ch():
+    aesthetic = 'entropy'
+    entropy_bounds = [0.499, 5.001]
+    entropy_targets = [0.50 + (0.25*i) for i in range(19)]
+    #entropy_targets = [0.50 + (0.25 * i) for i in range(3)]
+    complexity_bounds = [0.499, 2.301]
+    complexity_targets = [0.5 + (0.1 * i) for i in range(19)]
+    #complexity_targets = [0.5 + (0.1 * i) for i in range(3)]
+    artifacts_per_target = 20
+
+    ce = Environment.create(('localhost', 5555))
+    da = DriftTestAgent(ce,
+                        aesthetic=aesthetic,
+                        aesthetic_bounds=entropy_bounds,
+                        aesthetic_target=1.0,
+                        entropy_targets=entropy_targets,
+                        complexity_targets=complexity_targets)
+
+    for target in entropy_targets:
+        print("Entropy target {} ({} artifacts)".format(target, artifacts_per_target))
+        da.aesthetic_target = target
+        for i in range(artifacts_per_target):
+            aiomas.run(da.act())
+
+    da.aesthetic_bounds = complexity_bounds
+    da.aesthetic = 'complexity'
+    for target in complexity_targets:
+        print("Complexity target {} ({} artifacts)".format(target, artifacts_per_target))
+        da.aesthetic_target = target
+        for i in range(artifacts_per_target):
+            aiomas.run(da.act())
+
+    print("Finished all targets.")
+    da.save_mapped_values()
+    ce.destroy()
 
 
 def main(aesthetic='entropy',
-         aesthetic_bounds=[2.0, 5.5452],
-         aesthetic_target=3.5):
+         aesthetic_bounds=[0.5, 5.0],
+         aesthetic_target=0.5001):
     ce = Environment.create(('localhost', 5555))
     da = DriftTestAgent(ce,
                         aesthetic=aesthetic,
                         aesthetic_bounds=aesthetic_bounds,
                         aesthetic_target=aesthetic_target)
-    steps = 20
+    steps = 1000
     print("Starting {} steps".format(steps))
     for i in range(steps):
         print("Step {}".format(i+1))
-        if i == 10:
+        if i % 100 == 0:
             print("Changing agent target!")
             da.aesthetic_target = 5.0
         aiomas.run(da.act())
@@ -123,6 +204,4 @@ def main(aesthetic='entropy',
 
 
 if __name__ == "__main__":
-    main(aesthetic='entropy',
-         aesthetic_bounds=[2.0000, 5.0],
-         aesthetic_target=3.5)
+    aesthetic_ch()
