@@ -51,7 +51,7 @@ DEFAULT_PARAMS = {
     'population_size': 20,
     'aesthetic_list': ['entropy', 'complexity'],
     # Bounds for agents' target values for each aesthetic
-    'bounds': {'entropy': [0.5, 5.0], 'complexity': [0.5, 2.30]}
+    'bounds': {'entropy': [0.5, 4.5], 'complexity': [0.5, 1.8]}
 }
 
 
