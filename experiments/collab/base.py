@@ -1149,20 +1149,18 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         return evaluation, fr
 
     @aiomas.expose
-    async def act(self, *args, **kwargs):
-        ret = await super().act(*args, **kwargs)
-
-        # Drifting after the artifact creation so that the collaboration is not
-        # affected by drifting before it.
-
-        # REALLY, this should be done after all the agents have sent their
-        # current step's artifacts to their peers for evaluation. (That is,
-        # in environment's post callback.)
+    def check_drifting(self):
+        """Check if agent should drift in its aesthetic target.
+        """
         r = random.random()
         if r < self.drifting_prob:
             self.change_targets()
         if self._is_drifting:
             self.drift_towards_targets()
+
+    @aiomas.expose
+    async def act(self, *args, **kwargs):
+        ret = await super().act(*args, **kwargs)
         return ret
 
 
@@ -1361,7 +1359,17 @@ class CollabEnvironment(StatEnvironment):
     def post_cbk(self, *args, **kwargs):
         self.collect_evaluations()
         self.clear_collabs()
+        self.check_drifts()
         self.analyse_all()
+
+    def check_drifts(self):
+        async def slave_task(addr):
+            r_agent = await self.connect(addr, timeout=5)
+            await r_agent.check_drifting()
+
+        addrs = self.get_agents(addr=True)
+        tasks = create_tasks(slave_task, addrs)
+        run(tasks)
 
     def collect_evaluations(self):
         """Collect evaluations from all agents for all artifacts made in the
