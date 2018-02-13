@@ -4,6 +4,9 @@ artifacts with different targets.
 import logging
 import pickle
 
+from matplotlib import pyplot as plt
+import seaborn as sns
+
 import aiomas
 import numpy as np
 from creamas import Environment, Simulation
@@ -206,5 +209,63 @@ def main(aesthetic='entropy',
     ce.destroy()
 
 
+def plot_heatmap(mapped_values_pkl):
+    def get_heatmap(feat_vals):
+        heatmap = []
+        for dkey, e_vals in feat_vals:
+            e_targets = sorted(e_vals.items(), key=lambda x: x[0])
+            heatmap.append([])
+            cur_row = heatmap[-1]
+            for e_target, vals in e_targets:
+                cur_row.append(sum(vals) / len(vals))
+        return heatmap
+
+    mav = pickle.load(open(mapped_values_pkl, 'rb'))
+    cpx = sorted(mav['complexity'].items(), key=lambda x: x[0])
+    cpx_heatmap = get_heatmap(cpx)
+    cpx_arr = np.asarray(cpx_heatmap)
+    print(cpx_arr)
+
+    ent = sorted(mav['entropy'].items(), key=lambda x: x[0])
+    ent_heatmap = get_heatmap(ent)
+    ent_arr = np.asarray(ent_heatmap)
+    print(ent_arr)
+
+    sns.set_style("white")
+    sns.set_context("paper")
+    fig, ax = plt.subplots(figsize=(3, 3))
+    cs = cpx_arr
+    ax = sns.heatmap(cs,
+                     xticklabels=["ENT {:.2f}".format(e[0]) for e in ent],
+                     yticklabels=["CPX {:.2f}".format(e[0]) for e in cpx],
+                     cmap="Greys", vmin=0.0, vmax=1.0,
+                     square=True,
+                     cbar=True)
+    #plt.gca().invert_yaxis()
+    plt.tight_layout()
+    plt.savefig("{}_vals_heatmap.pdf".format('CPX-ENT'))
+    plt.close()
+
+    fig, ax = plt.subplots(figsize=(3, 3))
+    cs = ent_arr
+    ax = sns.heatmap(cs,
+                     xticklabels=["CPX {:.2f}".format(e[0]) for e in cpx],
+                     yticklabels=["ENT {:.2f}".format(e[0]) for e in ent],
+                     cmap="Greys", vmin=0.0, vmax=1.0,
+                     square=True,
+                     cbar=True)
+    #plt.gca().invert_yaxis()
+    plt.tight_layout()
+    plt.savefig("{}_vals_heatmap.pdf".format('ENT-CPX'))
+    plt.close()
+
+
+
+    #from matplotlib.colors import LogNorm
+
+    #print(len(cpx_heatmap), len(cpx_heatmap[0]))
+
+
 if __name__ == "__main__":
-    aesthetic_ch()
+    #aesthetic_ch()
+    plot_heatmap('mapped_values.pkl')
