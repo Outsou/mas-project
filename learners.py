@@ -326,3 +326,8 @@ class MultiLearner():
         vals = self.q_vals[state]
         return self.sort_addr_dict(vals, get_list)
 
+    def get_best_state(self, addr):
+        state_vals = {}
+        for state, vals in self.q_vals.items():
+            state_vals[state] = vals[addr]
+        return self.sort_addr_dict(state_vals, reverse=True)

@@ -1186,11 +1186,13 @@ def smooth_success_ratios(success_ratios, window=2):
 
 def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     """The main function to call when analyzing runs."""
+    # random needs to be last
+    LIST_ORDER = ['lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'random']
     sns.set()
     sns.set_style("white")
     sns.set_context("paper")
-
-    model_dirs = sorted(get_dirs_in_dir(path))
+    model_dirs = sorted(get_dirs_in_dir(path), key=lambda x: LIST_ORDER.index(os.path.split(x)[1]))
+    # model_dirs = sorted(get_dirs_in_dir(path))
     format_s = '%.{}f'.format(decimals)
 
     rows = [['Collaboration success ratio'],

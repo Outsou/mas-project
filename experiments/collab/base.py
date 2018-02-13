@@ -938,6 +938,11 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             mapper, _ = self._create_mapper(target)
             self.q_state_mappers.append(mapper)
 
+    def get_best_state(self, addr):
+        """Returns the best aesthetic target for the addr. Requires state-Q as the learning model."""
+        best_state = self.learner.get_best_state(addr)
+        return self.q_state_mappers[best_state]._mid
+
     def _create_mapper(self, new_target):
         """Creates a new double linear mapper."""
         if self.aesthetic == 'entropy':
