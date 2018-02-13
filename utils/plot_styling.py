@@ -5,9 +5,9 @@ import seaborn as sns
 COLORS = sns.color_palette('colorblind')
 
 # Order legends using these
-MODEL_ORDER = ['random', 'lr', 'Q1', 'Q2', 'Q3', 'state-Q']
-AEST_ORDER = ['benford', 'entropy', 'global_contrast_factor', 'symm', 'fd_aesthetics']
-AEST_SHORT_LABELS = ['BLW', 'ENT', 'GCF', 'SYM', 'FRD']
+MODEL_ORDER = ['random', 'lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q']
+AEST_ORDER = ['benford', 'entropy', 'global_contrast_factor', 'symm', 'fd_aesthetics', 'complexity']
+AEST_SHORT_LABELS = ['BLW', 'ENT', 'GCF', 'SYM', 'FRD', 'CPX']
 
 # Figure size for basic plots.
 BASE_FIG_SIZE = (4, 2.5)
@@ -27,30 +27,42 @@ MODEL_STYLES = {
          'color': COLORS[0],
          'dashes': [2, 2],
          },
-    'state-Q':
+    'Q1':
         {'line style': '-',
          'label': 'Direct-Q',
          'color': COLORS[1],
          'dashes': []  # Continuous line
          },
-    # 'Q2':
-    #     {'line style': '--',
-    #      'label': 'Hedonic-Q',
-    #      'color': COLORS[2],
-    #      'dashes': [5, 2]
-    #      },
-    # 'Q3':
-    #     {'line style': '--',
-    #      'label': 'Altruistic-Q',
-    #      'color': COLORS[3],
-    #      'dashes': [5, 2, 2, 2]
-    #      },
-    # 'lr':
-    #     {'line style': '--',
-    #      'label': 'Linear reg.',
-    #      'color': COLORS[5],
-    #      'dashes': [5, 2, 1, 2, 1, 2]
-    #      },
+    'Q2':
+         {'line style': '--',
+          'label': 'Hedonic-Q',
+          'color': COLORS[2],
+          'dashes': [5, 2]
+          },
+    'Q3':
+         {'line style': '--',
+          'label': 'Altruistic-Q',
+          'color': COLORS[3],
+          'dashes': [5, 2, 2, 2]
+          },
+    'lr':
+         {'line style': '--',
+          'label': 'Linear reg.',
+          'color': COLORS[5],
+          'dashes': [5, 2, 1, 2, 1, 2]
+          },
+    'hedonic-Q':
+        {'line style': '--',
+         'label': 'Hedonic-Q',
+         'color': COLORS[2],
+         'dashes': [5, 2]
+         },
+    'state-Q':
+        {'line style': '-',
+         'label': 'state-Q',
+         'color': COLORS[1],
+         'dashes': []  # Continuous line
+         },
 }
 
 # Generic styles for different aesthetics
@@ -80,6 +92,12 @@ AEST_STYLES = {
          'dashes': [5, 2, 2, 2]
          },
     'fd_aesthetics':
+        {'line style': '--',
+         'label': 'Fractal dimension',
+         'color': COLORS[5],
+         'dashes': [5, 2, 1, 2, 1, 2]
+         },
+    'complexity':
         {'line style': '--',
          'label': 'Fractal dimension',
          'color': COLORS[5],

@@ -51,7 +51,7 @@ DEFAULT_PARAMS = {
     'population_size': 20,
     'aesthetic_list': ['entropy', 'complexity'],
     # Bounds for agents' target values for each aesthetic
-    'bounds': {'entropy': [0.5, 5.0], 'complexity': [0.5, 2.999]}
+    'bounds': {'entropy': [0.5, 5.0], 'complexity': [0.5, 2.30]}
 }
 
 
@@ -301,21 +301,26 @@ if __name__ == "__main__":
                         default='random',
                         help="Learning model to be used.\n"
                              "random: no learning, collaboration are chosen randomly\n"
-                             "Q0: Gets reward 1 if both agents in collaboration passed the artifact, 0 otherwise. "
-                             "How often collaboration succeeds? \n"
-                             "Q1: Reward is the evaluation the agent gives to the artifact created in collaboration. "
-                             "How much do I gain from collaboration personally?\n"
-                             "Q2: Reward is own evaluation of artifact created by another agent. Learns only from "
-                             "artifacts created by a single agent. Who creates artifacts that are interesting to me?\n"
-                             "Q3: Reward is own artifact's evaluation by another agent. Who likes my artifacts?\n"
-                             "lr: Trains a linear regression model for each neighbour based on both evaluations of "
-                             "own artifacts by the neighbour and the neighbour's evaluations of its own artifacts."
-                             "Who would like the artifacts in this initial population I have created?\n"
-                             "state-Q: Reward is own evaluation of artifact created by another agent. Evaluation is "
-                             "done simultaneously with multiple different targets, which are mapped to states for "
-                             "Q-learning. How much would I like other agents' artifacts, if I had a different target "
-                             "for my evaluation function?")
-    parser.add_argument('-n', metavar='novelty', type=int, dest='novelty',
+                             "Q0: Gets reward 1 if both agents in collaboration passed\n"
+                             "the artifact, 0 otherwise. How often collaboration succeeds?\n"
+                             "simple-Q: Reward is the evaluation the agent gives to\n"
+                             "the artifact created in collaboration. How much do I gain\n"
+                             "from collaboration personally?\n"
+                             "hedonic-Q: Reward is own evaluation of artifact created by\n"
+                             "another agent. Learns only from artifacts created by a single\n"
+                             "agent. Who creates artifacts that are interesting to me?\n"
+                             "altruistic-Q: Reward is own artifact's evaluation by another\n"
+                             "agent. Who likes my artifacts?\n"
+                             "lr: Trains a linear regression model for each neighbour based\n"
+                             "on both evaluations of own artifacts by the neighbour and\n"
+                             "the neighbour's evaluations of its own artifacts. Who would like\n"
+                             "the artifacts in this initial population I have created?\n"
+                             "state-Q: Reward is own evaluation of artifact created by another\n"
+                             "agent. Evaluation is done simultaneously with multiple different\n"
+                             "targets, which are mapped to states for Q-learning. How much would\n"
+                             "I like other agents' artifacts, if I had a different target for\n"
+                             "my evaluation function?")
+    parser.add_argument('-n', metavar='novelty', type=float, dest='novelty',
                         help="Novelty weight.", default=0.5)
     parser.add_argument('-q', metavar='drift amount', type=float,
                         dest='drift_amount', help="Drifting amount, proportional to each agent's aesthetic value's bounds.",

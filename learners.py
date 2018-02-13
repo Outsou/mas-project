@@ -14,7 +14,7 @@ class MultiLearner():
 
     def __init__(self, addrs, num_of_features, std=None,
                  centroid_rate=0.01, weight_rate=0.2, e=0.2, reg_weight=0.5, gauss_mem=10,
-                 q_bins=None, q_init_val = 0.8):
+                 q_bins=None, q_init_val=0.8):
         """
         :param list addrs:
             Addresses of the agents that are modeled.
