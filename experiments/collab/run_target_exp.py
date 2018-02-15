@@ -51,7 +51,8 @@ DEFAULT_PARAMS = {
     'population_size': 20,
     'aesthetic_list': ['entropy', 'complexity'],
     # Bounds for agents' target values for each aesthetic
-    'bounds': {'entropy': [0.5, 4.5], 'complexity': [0.5, 1.8]}
+    'bounds': {'entropy': [0.5, 4.5], 'complexity': [0.5, 1.8]},
+    'target_adjustment': 'static'
 }
 
 
@@ -175,6 +176,7 @@ def create_agents(agent_cls, menv, params, log_folder, save_folder,
                                           drifting_speed=params['drift_speed'],
                                           aesthetic_drift_amount=params['drift_amount'],
                                           drifting_prob=params['drift_prob'],
+                                          target_adjustment=params['target_adjustment'],
                                           create_kwargs=create_kwargs,
                                           rules=rules,
                                           rule_weights=rule_weights,
@@ -333,6 +335,13 @@ if __name__ == "__main__":
                         dest='drift_speed',
                         help="Drifting speed, how many steps it takes for agents to reach their new aesthetic target.",
                         default=1)
+    parser.add_argument('-g', metavar='target adjustment', type=str,
+                        dest='target_adjustment',
+                        help="How agents adjust their collaboration goals\n"
+                             "static: no adjustment\n"
+                             "selector: selector adjusts its target to what it perceives best w.r.t. selected agent\n"
+                             "selected: selected adjusts its target to what it perceives best w.r.t. selector agent",
+                        default='static')
     parser.add_argument('-l', metavar='folder', type=str, dest='save_folder',
                         help="Base folder to save the test run. Actual save "
                              "folder is created as a subfolder to the base " 
@@ -354,6 +363,7 @@ if __name__ == "__main__":
     params['drift_amount'] = args.drift_amount
     params['drift_prob'] = args.drift_prob
     params['drift_speed'] = args.drift_speed
+    params['target_adjustment'] = args.target_adjustment
     base_path = os.path.join(".", args.save_folder, args.model)
     os.makedirs(base_path, exist_ok=True)
     log_folder = 'foo'

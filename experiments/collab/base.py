@@ -385,9 +385,9 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         for addr, e in evals:
             self.own_evals[aid][addr] = e
 
-    def append_coa(self, fb, caest, artifact=None):
-        self.collab_arts['caddr'].append(self.caddr)
-        self.collab_arts['cinit'].append(self.cinit)
+    def append_coa(self, fb, caddr, caest, cinit, artifact=None):
+        self.collab_arts['caddr'].append(caddr)
+        self.collab_arts['cinit'].append(cinit)
         self.collab_arts['caest'].append(caest)
         self.collab_arts['age'].append(self.age)
         self.collab_arts['fb'].append(fb)
@@ -403,10 +403,10 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             self.collab_arts['nval'].append(fr['norm_value'])
             self.collab_arts['neval'].append(fr['norm_evaluation'])
             # Collaborators stuff
-            cfr = artifact.framings[self.caddr]
+            cfr = artifact.framings[caddr]
             self.collab_arts['cval'].append(cfr['value'])
             self.collab_arts['cnov'].append(cfr['novelty'])
-            self.collab_arts['ceval'].append(artifact.evals[self.caddr])
+            self.collab_arts['ceval'].append(artifact.evals[caddr])
             self.collab_arts['cneval'].append(cfr['norm_evaluation'])
             self.collab_arts['cmval'].append(cfr['max_value'])
             self.collab_arts['cnval'].append(cfr['norm_value'])
@@ -493,6 +493,8 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
     @aiomas.expose
     def get_collab_pop(self):
+        """Return collaboration population as a list of :class:`Artifact` instances.
+        """
         return self.pop2arts(self.collab_pop)
 
     async def start_collab(self, max_iter):
@@ -621,10 +623,12 @@ class GPCollaborationAgent(CollaborationBaseAgent):
         if artifact is None:
             if self.collab_model in ['Q0', 'simple-Q']:
                 self.learner.update_bandit(0, self.caddr)
-            self.append_coa(False, aesthetic, None)
+            self.append_coa(False, self.caddr, aesthetic, self.cinit, None)
             return None
 
-        self._log(logging.DEBUG, "Received collab artifact.")
+        self._log(logging.DEBUG, "Received collab artifact from {}.".format(self.caddr))
+        caddr = self.caddr
+        self.clear_collab()
         if self.name not in artifact.evals:
             _ = self.evaluate(artifact)
 
@@ -634,7 +638,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             # self._log(logging.DEBUG, "Collab artifact passed both thresholds.")
             self.learn(artifact)
 
-        self.append_coa(True, aesthetic, artifact)
+        self.append_coa(True, caddr, aesthetic, self.cinit, artifact)
         return artifact
 
     @aiomas.expose
@@ -697,7 +701,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
             # Save artifact to save folder
             self.save_artifact(art, pset=self.super_pset, aid=aid)
-            self.append_coa(True, caest, art)
+            self.append_coa(True, self.caddr, caest, self.cinit, art)
             self.last_artifact = art
         else:
             if self.collab_model in ['Q0', 'simple-Q']:
@@ -706,7 +710,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             r_agent = await self.connect(self.caddr)
             r_aesthetic = await r_agent.get_aesthetic()
             ret = await r_agent.rcv_collab_artifact(None, self.aesthetic)
-            self.append_coa(False, r_aesthetic, None)
+            self.append_coa(False, self.caddr, r_aesthetic, self.cinit, None)
             self.last_artifact = None
             self._log(logging.INFO,
                       "could not agree on a collaboration result with {}!"
@@ -752,12 +756,13 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             return await self.act_collab(*args, **kwargs)
 
     @aiomas.expose
-    def show_artifact(self, artifact):
+    def show_artifact(self, artifact, collab=False):
         """USE LEARNING MODEL HERE.
         """
         # Do not learn artifact again if it has been shown already.
         if self.name in artifact.framings:
-            if self.caddr is not None:
+            creators = artifact.creator.split(' - ')
+            if len(creators) > 1 and self.addr in creators:
                 if self.collab_model == 'simple-Q':
                     self.learner.update_bandit(artifact.evals[self.name], self.caddr)
                 if self.collab_model == 'Q0':
@@ -902,6 +907,12 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         self.drifting_prob = kwargs.pop('drifting_prob', 0.05)
         # How many iterations it takes to drift to the new target.
         self.drifting_speed = kwargs.pop('drifting_speed', 1)
+        # How the agent's goal is adjusted in collaboration. Only works with
+        # learning model state-Q.
+        self.target_adjustment = kwargs.pop('target_adjustment', 'static')
+        # Adjusted aesthetic target for the (on-going or previous) collaboration.
+        self.adjusted_aesthetic_target = None
+        self.adjusted_mapper = None
         super().__init__(*args, **kwargs)
 
         # Set aesthetic target to modify **R** with the current bounds.
@@ -939,12 +950,47 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             self.q_state_mappers.append(mapper)
 
     def get_best_state(self, addr):
-        """Returns the best aesthetic target for the addr. Requires state-Q as the learning model."""
+        """Returns the best aesthetic target for the addr. Requires state-Q as
+        the learning model.
+        """
         best_state = self.learner.get_best_state(addr)
         return self.q_state_mappers[best_state]._mid
 
+    @aiomas.expose
+    def clear_collab(self):
+        super().clear_collab()
+        self.adjusted_aesthetic_target = None
+
+    @aiomas.expose
+    def force_collab(self, addr, init):
+        """Force agent to collaborate with an agent in given address.
+
+        Used by :meth:`CollabEnvironment.match_collab_partners`.
+
+        :param addr: Agent to collaborate with
+        :param bool init: Is this agent the initiator in the collaboration.
+        """
+        super().force_collab(addr, init)
+
+        if self.collab_model == 'state-Q':
+            if self.target_adjustment == 'selector' and init:
+                self.adjusted_aesthetic_target = self.get_best_state(addr)
+                self.adjusted_mapper, _ = self._create_mapper(self.adjusted_aesthetic_target)
+                self._log(logging.INFO,
+                          "Changed its target from {:.3f} to {:.3f} to match collaborator {}"
+                          .format(self.aesthetic_target, self.adjusted_aesthetic_target, addr))
+            elif self.target_adjustment == 'selected' and not init:
+                self.adjusted_aesthetic_target = self.get_best_state(addr)
+                self.adjusted_mapper, _ = self._create_mapper(self.adjusted_aesthetic_target)
+                self._log(logging.INFO,
+                          "Changed its target from {:.3f} to {:.3f} to match collaborator {}"
+                          .format(self.aesthetic_target, self.adjusted_aesthetic_target, addr))
+            elif self.target_adjustment == 'both':
+                pass
+
     def _create_mapper(self, new_target):
-        """Creates a new double linear mapper."""
+        """Creates a new double linear mapper.
+        """
         if self.aesthetic == 'entropy':
             feat = ImageEntropyFeature
         elif self.aesthetic == 'complexity':
@@ -964,12 +1010,19 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         super().append_oa(artifact)
         self.own_arts['tgt'].append(self.aesthetic_target)
 
-    def append_coa(self, fb, caest, artifact=None, ctgt=None):
-        super().append_coa(fb, caest, artifact)
+    def append_coa(self, fb, caddr, caest, cinit, artifact=None, ctgt=None):
+        super().append_coa(fb, caddr, caest, cinit, artifact)
         self.collab_arts['tgt'].append(self.aesthetic_target)
         if fb:
-            self.collab_arts['mtgt'].append(self.aesthetic_target)
+            if self.adjusted_aesthetic_target is None:
+                self.collab_arts['mtgt'].append(self.aesthetic_target)
+            else:
+                self.collab_arts['mtgt'].append(self.adjusted_aesthetic_target)
             self.collab_arts['ctgt'].append(ctgt)
+
+    @aiomas.expose
+    def get_adjusted_aesthetic_target(self):
+        return self.adjusted_aesthetic_target
 
     @aiomas.expose
     def get_aesthetic_target(self):
@@ -1120,7 +1173,15 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                 return evaluation, fr
 
         feat_val = self.R[0].feat.extract(artifact)
-        value = self.R[0].mapper(feat_val)
+
+        # If we are currently in collaboration and are adjusting our target for the collaboration,
+        # then we use the adjusted mapper.
+        if self.in_collab and (self.adjusted_aesthetic_target is not None):
+            #self._log(logging.DEBUG, "Using adjusted mapper T={}".format(self.adjusted_aesthetic_target))
+            value = self.adjusted_mapper(feat_val)
+        else:
+            value = self.R[0].mapper(feat_val)
+
         evaluation = value
         if self.novelty_weight != -1:
             novelty = float(self.novelty(artifact))
@@ -1157,6 +1218,73 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             self.change_targets()
         if self._is_drifting:
             self.drift_towards_targets()
+
+    @aiomas.expose
+    async def act_collab(self, *args, **kwargs):
+        """Collaboration act.
+
+        This method returns immediately (and no collaboration is done) if
+        ``cinit == False``.
+        """
+        # Only the collaboration initiators actually act. Others react to them.
+        if not self.cinit:
+            return
+
+        best, ranking = await self.start_collab(self.collab_iters)
+
+        if best is not None:
+            # Change creator name so that it does not come up in memory when
+            # creating new individual populations
+            best._creator = "{} - {}".format(self.addr, self.caddr)
+            best.rank = ranking
+
+            #print("Chose best image with ranking {}".format(ranking))
+            caddr = self.caddr
+            self.clear_collab()
+            e, fr = self.evaluate(best)
+
+            #print("Evals: {}".format(best.evals))
+            #print("Framings: {}".format(best.framings))
+            n = None if fr['novelty'] is None else np.around(fr['novelty'], 2)
+            v = np.around(fr['value'], 2)
+            e = np.around(e, 2)
+            mv = np.around(fr['max_value'], 2)
+
+            r_agent = await self.connect(caddr)
+            caest = await r_agent.get_aesthetic()
+
+            self._log(logging.INFO,
+                      '({}) collab with {} ({}) rank={}. E={} [V:{} ({}) N:{}]'
+                      .format(self.aesthetic.upper(), caddr, caest.upper(),
+                              ranking, e, v, mv, n))
+            #self.add_artifact(best)
+
+            aid = get_aid(self.addr, self.age, self.aesthetic, v, n, caddr, caest)
+            best.aid = aid
+            art = await r_agent.rcv_collab_artifact(best, self.aesthetic)
+
+            passed = bool(fr['pass_value'] and fr['pass_novelty'])
+            if passed:
+                # self._log(logging.DEBUG, "Collab artifact passed both thresholds.")
+                self.learn(art)
+
+            # Save artifact to save folder
+            self.save_artifact(art, pset=self.super_pset, aid=aid)
+            self.append_coa(True, caddr, caest, True, art)
+            self.last_artifact = art
+        else:
+            if self.collab_model in ['Q0', 'simple-Q']:
+                self.learner.update_bandit(0, self.caddr)
+
+            r_agent = await self.connect(self.caddr)
+            r_aesthetic = await r_agent.get_aesthetic()
+            ret = await r_agent.rcv_collab_artifact(None, self.aesthetic)
+            self.append_coa(False, self.caddr, r_aesthetic, self.cinit, None)
+            self.last_artifact = None
+            self._log(logging.INFO,
+                      "({}) could not agree on a collaboration result with {} ({})!"
+                      .format(self.aesthetic.upper(), self.caddr, r_aesthetic.upper))
+            self.clear_collab()
 
     @aiomas.expose
     async def act(self, *args, **kwargs):
@@ -1275,9 +1403,7 @@ class CollabEnvironment(StatEnvironment):
                 print("HÄLÄRM!!! {} did not find a collaboration partner!!"
                       .format(agent))
             else:
-                if collab_step:
-                    self._log(logging.DEBUG,
-                            "Choosing {} to collab with {}.".format(agent, addr))
+                self._log(logging.DEBUG, "Choosing {} to collab with {}.".format(agent, addr))
                 in_collab.append(agent)
                 in_collab.append(addr)
                 matches.append((agent, addr))
