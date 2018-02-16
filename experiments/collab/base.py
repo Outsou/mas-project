@@ -850,6 +850,12 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
         return self.aesthetic, self.own_arts, self.own_evals, self.collab_arts, self.collab_evals
 
+    @aiomas.expose
+    def check_drifting(self):
+        """Implemented for consistency.
+        """
+        pass
+
 
 class DriftingGPCollaborationAgent(GPCollaborationAgent):
     """GP collaboration agent which changes its preferences during the
