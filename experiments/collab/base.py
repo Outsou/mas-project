@@ -1485,7 +1485,9 @@ class CollabEnvironment(StatEnvironment):
     def post_cbk(self, *args, **kwargs):
         self.collect_evaluations()
         self.clear_collabs()
-        self.check_drifts()
+        # Check drifting only after the collaboration step (for the next single artifact steps).
+        if self.age % 2 == 0:
+            self.check_drifts()
         self.analyse_all()
 
     def check_drifts(self):

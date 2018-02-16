@@ -1187,7 +1187,7 @@ def smooth_success_ratios(success_ratios, window=2):
 def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     """The main function to call when analyzing runs."""
     # random needs to be last
-    LIST_ORDER = ['lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'random']
+    LIST_ORDER = ['lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'random']
     sns.set()
     sns.set_style("white")
     sns.set_context("paper")

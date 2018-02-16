@@ -1,11 +1,37 @@
 from functools import reduce
 import time
+import math
 
 from creamas.rules.feature import Feature
+from creamas.rules.mapper import Mapper
 from scipy.stats import norm
 from scipy import misc
 import numpy as np
 import cv2
+
+
+class SquareRootMapper(Mapper):
+    """Maps feature values by their rooted distance to target given at initialization time.
+
+    The actual computed value is :math:`1 - \sqrt(|t - v|/d)`, where t is target, v is value and
+    d is hi - lo.
+    """
+
+    def __init__(self, lo, target, hi):
+        """
+        :param lo: Absolute lowest value for the mapper
+        :param target: Target value for the mapper (in [lo, hi])
+        :param hi: Absolute highest value for the mapper (must be larger than lo)
+        """
+        super().__init__()
+        self._lo = lo
+        self._hi = hi
+        self._target = target
+        self._bdiff = hi - lo
+
+    def map(self, value):
+        tdiff = 1 - math.sqrt(abs(self._target - value) / self._bdiff)
+        return tdiff if tdiff >= 0.0 else 0.0
 
 
 def fractal_dimension(image):
