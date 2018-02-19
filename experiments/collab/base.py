@@ -628,6 +628,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
 
         self._log(logging.DEBUG, "Received collab artifact from {}.".format(self.caddr))
         caddr = self.caddr
+        cinit = self.cinit
         self.clear_collab()
         if self.name not in artifact.evals:
             _ = self.evaluate(artifact)
@@ -638,7 +639,7 @@ class GPCollaborationAgent(CollaborationBaseAgent):
             # self._log(logging.DEBUG, "Collab artifact passed both thresholds.")
             self.learn(artifact)
 
-        self.append_coa(True, caddr, aesthetic, self.cinit, artifact)
+        self.append_coa(True, caddr, aesthetic, cinit, artifact)
         return artifact
 
     @aiomas.expose
@@ -919,6 +920,17 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         # Adjusted aesthetic target for the (on-going or previous) collaboration.
         self.adjusted_aesthetic_target = None
         self.adjusted_mapper = None
+        # Does curiousness drive the agent to change its own aesthetic target.
+        # 'static': no curious behavior, using drifting_prob (if any)
+        # 'personal': only accumulating curiosity from own artifacts
+        # 'social': accumulating curiosity from both own and others artifacts.
+        self.curious_behavior = kwargs.pop('curious_behavior', 'static')
+        self.curious_threshold = 1 / self.drifting_prob
+        if self.curious_behavior == 'social':
+            # We had to use MATH to come up with this multiplication factor!
+            self.curious_threshold = 2.5 * self.curious_threshold
+        self.accumulated_curiosity = 0.0
+
         super().__init__(*args, **kwargs)
 
         # Set aesthetic target to modify **R** with the current bounds.
@@ -947,10 +959,10 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
 
         # Create mappers for bin middle points
         self.q_state_mappers = []
-        bin_size = (self.aesthetic_bounds[1] - self.aesthetic_bounds[0]) / self.q_bins
+        self.bin_size = (self.aesthetic_bounds[1] - self.aesthetic_bounds[0]) / self.q_bins
         for i in range(self.q_bins):
-            start = self.aesthetic_bounds[0] + i * bin_size
-            end = start + bin_size
+            start = self.aesthetic_bounds[0] + i * self.bin_size
+            end = start + self.bin_size
             target = (start + end) / 2
             mapper, _ = self._create_mapper(target)
             self.q_state_mappers.append(mapper)
@@ -1021,7 +1033,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         self.collab_arts['tgt'].append(self.aesthetic_target)
         if fb:
             if self.adjusted_aesthetic_target is None:
-                self.collab_arts['mtgt'].append(self.aesthetic_target)
+                self.collab_arts['mtgt'].append(None)
             else:
                 self.collab_arts['mtgt'].append(self.adjusted_aesthetic_target)
             self.collab_arts['ctgt'].append(ctgt)
@@ -1203,7 +1215,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
 
         fr = {'value': value,
               'novelty': novelty,
-              'pass_novelty': bool(novelty >= self._novelty_threshold) if novelty is not None else False,
+              'pass_novelty': bool(novelty >= self._novelty_threshold) if novelty is not None else True,
               'pass_value': bool(value >= self._value_threshold),
               'max_value': self.max_value,
               'norm_value': norm_value,
@@ -1220,10 +1232,72 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         """Check if agent should drift in its aesthetic target.
         """
         r = random.random()
-        if r < self.drifting_prob:
+        if self.curious_behavior == 'static':
+            if r < self.drifting_prob:
+                self.change_targets()
+        elif self.accumulated_curiosity > self.curious_threshold:
             self.change_targets()
+            # Curiosity is erased when the target is changed.
+            self.accumulated_curiosity = 0.0
         if self._is_drifting:
             self.drift_towards_targets()
+
+    def accumulate_curiosity(self, feat_val):
+        abs_diff = abs(self.aesthetic_target - feat_val)
+        if abs_diff > self.bin_size * 2:
+            # Feat value is too far away to accumulate curiosity.
+            return
+        else:
+            curiosity = 1 - (abs_diff / (self.bin_size * 2))
+            self.accumulated_curiosity += curiosity
+
+    @aiomas.expose
+    def show_artifact(self, artifact, collab=False):
+        """USE LEARNING MODEL HERE.
+        """
+        # Do not learn artifact again if it has been shown already.
+        if self.name in artifact.framings:
+            creators = artifact.creator.split(' - ')
+            if len(creators) > 1 and self.addr in creators:
+                if self.collab_model == 'simple-Q':
+                    self.learner.update_bandit(artifact.evals[self.name], self.caddr)
+                if self.collab_model == 'Q0':
+                        self.learner.update_bandit(1, self.caddr)
+
+            return artifact.evals[self.name], artifact.framings[self.name]
+
+        if self.collab_model == 'lr':
+            creators = artifact.creator.split(' - ')
+            feats = self.get_features(artifact)
+            for creator in creators:
+                eval = artifact.framings[creator]['norm_evaluation']
+                self.learner.update_linear_regression(eval, creator, feats)
+
+        e, fr = self.evaluate(artifact)
+
+        # Accumulate curiosity threshold if applicable
+        if self.curious_behavior == 'social':
+            self.accumulate_curiosity(fr['feat_val'])
+
+        if len(artifact.creator.split(' - ')) == 1:
+            if self.collab_model == 'hedonic-Q':
+                self.learner.update_bandit(e, artifact.creator)
+            elif self.collab_model == 'state-Q':
+                for i in range(self.q_bins):
+                    mapper = self.q_state_mappers[i]
+                    val = mapper(fr['feat_val'])
+                    self.learner.update_q(val, artifact.creator, i)
+
+            # if self.collab_model == 'gaussian':
+            #     self.learner.update_gaussian(fr['value'], artifact.creator)
+
+        # Fixed threshold here.
+        if fr['novelty'] > 0.4 and fr['norm_value'] > 0.5:
+            self._log(logging.DEBUG,
+                      "Learning (nov={}, nval={}): {}"
+                      .format(fr['novelty'], fr['norm_value'], artifact.aid))
+            self.learn(artifact)
+        return e, fr
 
     @aiomas.expose
     async def act_collab(self, *args, **kwargs):
@@ -1248,6 +1322,9 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             caddr = self.caddr
             self.clear_collab()
             e, fr = self.evaluate(best)
+
+            if self.curious_behavior in ['personal', 'social']:
+                self.accumulated_curiosity(fr['feat_val'])
 
             #print("Evals: {}".format(best.evals))
             #print("Framings: {}".format(best.framings))
@@ -1291,6 +1368,39 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                       "({}) could not agree on a collaboration result with {} ({})!"
                       .format(self.aesthetic.upper(), self.caddr, r_aesthetic.upper))
             self.clear_collab()
+
+    @aiomas.expose
+    async def act_individual(self, *args, **kwargs):
+        """Agent's act for individually made artifacts.
+        """
+        artifacts = self.invent(self.search_width, n_artifacts=1)
+        for artifact, _ in artifacts:
+            e, fr = self.evaluate(artifact)
+            n = None if fr['novelty'] is None else np.around(fr['novelty'], 2)
+            v = np.around(fr['value'], 2)
+            self._log(logging.INFO,
+                      'Created an individual artifact. E={} (V:{}, N:{})'
+                      .format(np.around(e, 2), v, n))
+
+            if self.curious_behavior in ['personal', 'social']:
+                self.accumulate_curiosity(fr['feat_val'])
+            #self.add_artifact(artifact)
+
+            # Artifact is acceptable if it passes value and novelty thresholds.
+            # It is questionable if we need these, however.
+            passed = fr['pass_value'] and fr['pass_novelty']
+            if passed:
+                self._log(logging.DEBUG,
+                          "Individual artifact passed thresholds")
+                self.learn(artifact)
+
+            # Save artifact to save folder
+            aid = get_aid(self.addr, self.age, self.aesthetic, v, n)
+            artifact.aid = aid
+            self.save_artifact(artifact, pset=self.super_pset, aid=aid)
+            # Append to own artifacts
+            self.append_oa(artifact)
+            self.last_artifact = artifact
 
     @aiomas.expose
     async def act(self, *args, **kwargs):

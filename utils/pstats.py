@@ -16,7 +16,7 @@ import pandas as pd
 
 from experiments.collab.chk_runs import get_last_lines
 from utils.util import primitives
-from utils.plot_styling import MODEL_STYLES, MODEL_ORDER, BASE_FIG_SIZE, AEST_SHORT_LABELS, AEST_ORDER
+from utils.plot_styling import *
 
 
 # Skills shared by all agents
@@ -99,7 +99,7 @@ def create_collab_partner_plot(means, means_rev, separated=True):
     fig.savefig("remaining_collaboration_partners.pdf")
 
 
-def analyze_model_dir(path):
+def analyze_model_dir(path, old_collab):
     # Get directories of valid runs
     dirs = []
     lines = get_last_lines(path)
@@ -109,7 +109,7 @@ def analyze_model_dir(path):
     agent_info = get_agent_infos(dirs)
     analyze_agent_info(agent_info)
     #analyze_artifact_skills(dirs, path, agent_info)
-    rets = analyze_agent_collab_skills(dirs, path, agent_info)
+    rets = analyze_agent_collab_skills(dirs, path, agent_info, old_collab)
     return rets
 
 
@@ -261,7 +261,7 @@ def analyze_artifact_skills(dirs, path, agent_info):
     print("Mean other skills in col: {:.3f} std: {:.3f}".format(maos, saos))
 
 
-def analyze_agent_collab_skills(dirs, path, agent_info):
+def analyze_agent_collab_skills(dirs, path, agent_info, old_collab=True):
     """Analyze the effect of agent skills on the collaboration results.
     """
     pkl_name = 'collab_arts.pkl'
@@ -273,8 +273,13 @@ def analyze_agent_collab_skills(dirs, path, agent_info):
     none_various_fb = []
     n_collab_partners_all = []
     n_collab_partners_rev_all = []
-    all_collab_selections = [[0 for _ in range(5)] for _ in range(5)]
-    aest2idx = {'benford': 0, 'entropy': 1, 'global_contrast_factor': 2, 'symm': 3, 'fd_aesthetics': 4}
+    print(len(dirs), path)
+    if old_collab:
+        all_collab_selections = [[0 for _ in range(5)] for _ in range(5)]
+        aest2idx = {'benford': 0, 'entropy': 1, 'global_contrast_factor': 2, 'symm': 3, 'fd_aesthetics': 4}
+    else:
+        all_collab_selections = [[0 for _ in range(2)] for _ in range(2)]
+        aest2idx = {'entropy': 0, 'complexity': 1}
 
     for dir in dirs:
         #collab_selections = [[0 for _ in range(5)] for _ in range(5)]
@@ -402,14 +407,17 @@ def analyze_agent_collab_skills(dirs, path, agent_info):
         #all_collab_selections.append(collab_selections)
 
     acs = np.array(all_collab_selections)
-    print(np.sum(acs))
     acs = acs / len(dirs)
     #print(acs)
-    print(np.sum(acs))
     mean_collab_selections = acs
-    print(AEST_ORDER)
-    for i,e in enumerate(acs):
-        print("{}: {} {} {:.3f}".format(i, AEST_ORDER[i], ["{:.3f}".format(k) for k in e], sum(e)))
+
+    if old_collab:
+        for i,e in enumerate(acs):
+            print("{}: {} {} {:.3f}".format(i, AEST_ORDER[i], ["{:.3f}".format(k) for k in e], sum(e)))
+    else:
+        for i,e in enumerate(acs):
+            print("{}: {} {} {:.3f}".format(i, AEST_ORDER_NEW[i], ["{:.3f}".format(k) for k in e], sum(e)))
+
 
     print_agent_info_statistics(agent_info, both_various_fb, init_various_fb,
                                 other_various_fb, none_various_fb, all_funcs)
@@ -433,7 +441,98 @@ def compute_mean_selections(all_collab_selections):
     return means
 
 
-def create_aesthetic_collab_heatmap(collab_selections):
+def create_aesthetic_collab_heatmap(collab_selections, old_collab=True):
+
+    if old_collab:
+        return create_aesthetic_collab_heatmap_old(collab_selections)
+    else:
+        return create_aesthetic_collab_heatmap_new(collab_selections)
+
+
+def create_aesthetic_collab_heatmap_new(collab_selections):
+    sns.set_style("white")
+    sns.set_context("paper")
+    from matplotlib.colors import LogNorm
+
+    for model, c_selections in collab_selections.items():
+        fig, ax = plt.subplots(figsize=(3, 3))
+        cs = np.asarray(c_selections)
+        ax = sns.heatmap(cs,
+                         xticklabels=AEST_SHORT_LABELS_NEW,
+                         yticklabels=AEST_SHORT_LABELS_NEW,
+                         cmap="Greys", vmin=0, vmax=1000,
+                         square=True,
+                         cbar=True)
+        #plt.gca().invert_yaxis()
+        plt.tight_layout()
+        plt.savefig("{}_aest_collabs_heatmap.pdf".format(model))
+        plt.close()
+
+    """
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(8.5, 2.5))
+    cs1 = np.asarray(collab_selections['Q1'])
+    cs2 = np.asarray(collab_selections['Q2'])
+    cs3 = np.asarray(collab_selections['Q3'])
+    ax = sns.heatmap(cs1, ax=ax1,
+                     xticklabels=AEST_SHORT_LABELS,
+                     yticklabels=AEST_SHORT_LABELS,
+                     cmap="Greys", vmin=0, vmax=160,
+                     square=True,
+                     cbar=False)
+    ax = sns.heatmap(cs2, ax=ax2,
+                     xticklabels=AEST_SHORT_LABELS,
+                     yticklabels=AEST_SHORT_LABELS,
+                     cmap="Greys", vmin=0, vmax=160,
+                     square=True,
+                     cbar=False)
+    ax = sns.heatmap(cs3, ax=ax3,
+                     xticklabels=AEST_SHORT_LABELS,
+                     yticklabels=AEST_SHORT_LABELS,
+                     cmap="Greys", vmin=0, vmax=160,
+                     square=True,
+                     cbar=True)
+
+    plt.tight_layout()
+    plt.savefig("Q123_aest_collabs_heatmap.pdf".format(model))
+    plt.close()
+
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(10.5, 2.3))
+    cs1 = np.asarray(collab_selections['random'])
+    cs2 = np.asarray(collab_selections['hedonic-Q'])
+    cs3 = np.asarray(collab_selections['state-Q'])
+    cs4 = np.asarray(collab_selections['state-Q2'])
+    ax = sns.heatmap(cs1, ax=ax1,
+                     xticklabels=AEST_SHORT_LABELS,
+                     yticklabels=AEST_SHORT_LABELS,
+                     cmap="Greys", vmin=0, vmax=150.5,
+                     square=True,
+                     cbar=False)
+    ax = sns.heatmap(cs2, ax=ax2,
+                     xticklabels=AEST_SHORT_LABELS,
+                     yticklabels=AEST_SHORT_LABELS,
+                     cmap="Greys", vmin=0, vmax=150.5,
+                     square=True,
+                     cbar=False)
+    ax = sns.heatmap(cs3, ax=ax3,
+                     xticklabels=AEST_SHORT_LABELS,
+                     yticklabels=AEST_SHORT_LABELS,
+                     cmap="Greys", vmin=0, vmax=150.5,
+                     square=True,
+                     cbar=False)
+    ax = sns.heatmap(cs4, ax=ax4,
+                     xticklabels=AEST_SHORT_LABELS,
+                     yticklabels=AEST_SHORT_LABELS,
+                     cmap="Greys", vmin=0, vmax=150.5,
+                     square=True,
+                     cbar=True)
+
+    plt.tight_layout()
+    plt.savefig("all_aest_collabs_heatmap_new.pdf".format(model))
+    plt.close()
+    """
+
+
+def create_aesthetic_collab_heatmap_old(collab_selections):
     sns.set_style("white")
     sns.set_context("paper")
     from matplotlib.colors import LogNorm
@@ -452,6 +551,7 @@ def create_aesthetic_collab_heatmap(collab_selections):
         plt.savefig("{}_aest_collabs_heatmap.pdf".format(model))
         plt.close()
 
+    """
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(8.5, 2.5))
     cs1 = np.asarray(collab_selections['Q1'])
     cs2 = np.asarray(collab_selections['Q2'])
@@ -512,6 +612,7 @@ def create_aesthetic_collab_heatmap(collab_selections):
     plt.tight_layout()
     plt.savefig("all_aest_collabs_heatmap.pdf".format(model))
     plt.close()
+    """
 
 
 def analyze_agent_info(agent_info):
@@ -656,6 +757,11 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=[]):
     means = {}
     means_rev = {}
     c_selections = {}
+    print(model_dirs)
+    old_collab = True
+    for m in model_dirs:
+        if m.endswith('state-Q'):
+            old_collab = False
 
     for model_dir in model_dirs:
         model = os.path.split(model_dir)[1]
@@ -665,14 +771,14 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=[]):
             continue
 
         models.append(model)
-        cumulative_collab_partner_means, cumulative_collab_partners_rev_means, collab_selections = analyze_model_dir(model_dir)
+        cumulative_collab_partner_means, cumulative_collab_partners_rev_means, collab_selections = analyze_model_dir(model_dir, old_collab)
         means[model] = cumulative_collab_partner_means
         means_rev[model] = cumulative_collab_partners_rev_means
         c_selections[model] = collab_selections
         print(np.min(collab_selections), np.max(collab_selections))
         print("***************************************************\n")
 
-    create_aesthetic_collab_heatmap(c_selections)
+    create_aesthetic_collab_heatmap(c_selections, old_collab)
     create_collab_partner_plot(means, means_rev)
 
 

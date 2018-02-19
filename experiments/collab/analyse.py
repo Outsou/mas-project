@@ -9,3 +9,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     folder = args.run_folder
     analyze_collab_gp_runs(folder)
+

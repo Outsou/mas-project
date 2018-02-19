@@ -5,9 +5,12 @@ import seaborn as sns
 COLORS = sns.color_palette('colorblind')
 
 # Order legends using these
-MODEL_ORDER = ['random', 'lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2']
+MODEL_ORDER = ['random', 'lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3']
 AEST_ORDER = ['benford', 'entropy', 'global_contrast_factor', 'symm', 'fd_aesthetics', 'complexity']
 AEST_SHORT_LABELS = ['BLW', 'ENT', 'GCF', 'SYM', 'FRD', 'CPX']
+
+AEST_ORDER_NEW = ['entropy', 'complexity']
+AEST_SHORT_LABELS_NEW = ['ENT', 'FRD']
 
 # Figure size for basic plots.
 BASE_FIG_SIZE = (4, 2.5)
@@ -68,6 +71,12 @@ MODEL_STYLES = {
           'label': 'state-Q (dyn)',
           'color': COLORS[3],
           'dashes': [5, 2, 2, 2]
+          },
+    'state-Q3':
+         {'line style': '--',
+          'label': 'state-Q (dyn) 2',
+          'color': COLORS[5],
+          'dashes': [5, 2, 1, 2, 1, 2]
           },
 }
 

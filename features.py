@@ -10,13 +10,12 @@ import numpy as np
 import cv2
 
 
-class SquareRootMapper(Mapper):
+class SquareRootDiffMapper(Mapper):
     """Maps feature values by their rooted distance to target given at initialization time.
 
     The actual computed value is :math:`1 - \sqrt(|t - v|/d)`, where t is target, v is value and
     d is hi - lo.
     """
-
     def __init__(self, lo, target, hi):
         """
         :param lo: Absolute lowest value for the mapper
@@ -34,8 +33,31 @@ class SquareRootMapper(Mapper):
         return tdiff if tdiff >= 0.0 else 0.0
 
 
+class LinearDiffMapper(Mapper):
+    """Maps feature values by their linear distance to target given at initialization time.
+
+    The actual computed value is :math:`1 - |t - v|/d`, where t is target, v is value and
+    d is hi - lo.
+    """
+    def __init__(self, lo, target, hi):
+        """
+        :param lo: Absolute lowest value for the mapper
+        :param target: Target value for the mapper (in [lo, hi])
+        :param hi: Absolute highest value for the mapper (must be larger than lo)
+        """
+        super().__init__()
+        self._lo = lo
+        self._hi = hi
+        self._target = target
+        self._bdiff = hi - lo
+
+    def map(self, value):
+        tdiff = 1 - (abs(self._target - value) / self._bdiff)
+        return tdiff if tdiff >= 0.0 else 0.0
+
+
 def fractal_dimension(image):
-    '''Estimates the fractal dimension of an image with box counting.
+    """Estimates the fractal dimension of an image with box counting.
     Counts pixels with value 0 as empty and everything else as non-empty.
     Input image has to be grayscale.
 
@@ -44,7 +66,7 @@ def fractal_dimension(image):
     :param image: numpy.ndarray
     :returns: estimation of fractal dimension
     :rtype: float
-    '''
+    """
     pixels = np.asarray(np.nonzero(image > 0)).transpose()
     lx = image.shape[1]
     ly = image.shape[0]
@@ -72,7 +94,8 @@ def fractal_dimension(image):
 
 
 class DummyFeature(Feature):
-    '''A dummy feature used for testing purposes.'''
+    """A dummy feature used for testing purposes.
+    """
     def __init__(self, feature_idx):
         '''
         :param feature_idx:
