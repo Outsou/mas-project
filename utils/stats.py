@@ -719,11 +719,15 @@ def analyze_collab_arts(dirs):
 
             # Calculate how often aesthetic pairs succeeded and failed
             for i in range(len(collab_arts_dict['fb'])):
-                aest_pair = tuple(sorted([aest, collab_arts_dict['caest'][i]]))
+                caest = collab_arts_dict['caest'][i]
+                aest_pair = tuple(sorted([aest, caest]))
                 if aest_pair not in aesthetic_pair_stats:
-                    aesthetic_pair_stats[aest_pair] = {'succeeded': 0, 'failed': 0, 'rank': []}
+                    aesthetic_pair_stats[aest_pair] = {'succeeded': 0, 'failed': 0, 'rank': [],
+                                                       'succ_init': {aest_pair[0]: 0, aest_pair[1]: 0}}
                 if collab_arts_dict['fb'][i]:
                     aesthetic_pair_stats[aest_pair]['succeeded'] += 1
+                    initializer = aest if collab_arts_dict['cinit'][i] else caest
+                    aesthetic_pair_stats[aest_pair]['succ_init'][initializer] += 1
                     # Calculate index of rank
                     rank_idx = sum(collab_arts_dict['fb'][:i+1]) - 1
                     aesthetic_pair_stats[aest_pair]['rank'].append(collab_arts_dict['rank'][rank_idx])
@@ -736,6 +740,9 @@ def analyze_collab_arts(dirs):
         aesthetic_pair_stats[aest_pair]['failed'] /= 2
         aesthetic_pair_stats[aest_pair]['rank'] = sum(aesthetic_pair_stats[aest_pair]['rank']) \
                                                   / len(aesthetic_pair_stats[aest_pair]['rank'])
+        for key in aesthetic_pair_stats[aest_pair]['succ_init'].keys():
+            aesthetic_pair_stats[aest_pair]['succ_init'][key] = \
+                int(aesthetic_pair_stats[aest_pair]['succ_init'][key] / 2)
 
     # Calculate aesthetic averages
     for aesthetic, caesthetics in aesthetic_stats.items():
@@ -893,14 +900,18 @@ def print_aesthetic_table(collab_eval_stats, collab_art_stats, format_s, models)
                     collab_eval_stats['aesthetic_pairs'][pair]['eval'],
                     collab_eval_stats['aesthetic_pairs'][pair]['val'],
                     collab_eval_stats['aesthetic_pairs'][pair]['nov'],
-                    collab_eval_stats['aesthetic_pairs'][pair]['count'],
+                    collab_art_stats['aesthetic_pairs'][pair]['succeeded'],
+                    total,
                     success_ratio,
-                    collab_art_stats['aesthetic_pairs'][pair]['rank']]
+                    collab_art_stats['aesthetic_pairs'][pair]['rank'],
+                    '{}/{}'.format(collab_art_stats['aesthetic_pairs'][pair]['succ_init'][pair[0]],
+                                   collab_art_stats['aesthetic_pairs'][pair]['succ_init'][pair[1]])]
         row_vals = [format_s % val if type(val) is float else val for val in row_vals]
         aesthetic_pair_rows.append(row_vals)
 
     print(tabulate(aesthetic_pair_rows,
-                   headers=[models[-1], 'evaluation', 'value', 'novelty', 'count', 'success ratio', 'mean rank']))
+                   headers=[models[-1], 'evaluation', 'value', 'novelty', 'success count', 'total count',
+                            'success ratio', 'mean rank', 'successfull inits']))
     return aesthetic_pair_rows, pairs
 
 
@@ -1288,12 +1299,12 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         print()
 
         # Create image of aesthetic pair count, success ratio and mean rank
-        table = np.array(aesthetic_pair_rows)[:, -3:]
-        table = np.array(table, dtype=float)
-        make_table_image(np.round(table, 2),
-                         pairs,
-                         ['count', 'success ratio', 'mean rank'],
-                         '{}_aest_pairs.png'.format(model))
+        # table = np.array(aesthetic_pair_rows)[:, -3:]
+        # table = np.array(table, dtype=float)
+        # make_table_image(np.round(table, 2),
+        #                  pairs,
+        #                  ['count', 'success ratio', 'mean rank'],
+        #                  '{}_aest_pairs.png'.format(model))
 
         # Record success ratios
         cumulative_successes[model] = get_cumulative_success_ratio(collab_eval_stats['step_successes'],
