@@ -25,11 +25,11 @@ class SquareRootDiffMapper(Mapper):
         super().__init__()
         self._lo = lo
         self._hi = hi
-        self._target = target
+        self._mid = target
         self._bdiff = hi - lo
 
     def map(self, value):
-        tdiff = 1 - math.sqrt(abs(self._target - value) / self._bdiff)
+        tdiff = 1 - math.sqrt(abs(self._mid - value) / self._bdiff)
         return tdiff if tdiff >= 0.0 else 0.0
 
 
@@ -48,11 +48,11 @@ class LinearDiffMapper(Mapper):
         super().__init__()
         self._lo = lo
         self._hi = hi
-        self._target = target
+        self._mid = target
         self._bdiff = hi - lo
 
     def map(self, value):
-        tdiff = 1 - (abs(self._target - value) / self._bdiff)
+        tdiff = 1 - (abs(self._mid - value) / self._bdiff)
         return tdiff if tdiff >= 0.0 else 0.0
 
 

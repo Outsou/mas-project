@@ -9,6 +9,7 @@ import os
 import pickle
 import asyncio
 import pprint
+import traceback
 
 import numpy as np
 from deap import tools, gp, creator, base
@@ -24,7 +25,7 @@ from agents import GPImageAgent, agent_name_parse
 from artifacts import GeneticImageArtifact as GIA
 from experiments.collab.ranking import choose_best
 from learners import MultiLearner
-from features import ImageEntropyFeature, ImageComplexityFeature
+from features import ImageEntropyFeature, ImageComplexityFeature, LinearDiffMapper
 
 __all__ = ['CollaborationBaseAgent',
            'GPCollaborationAgent',
@@ -72,8 +73,6 @@ class ImageSTMemory:
         if len(self.artifacts) >= 2 * self.max_length:
             self.artifacts = self.artifacts[-self.max_length:]
         self.artifacts.append(artifact)
-        #print("artifacts in memory: {} ({})".format(
-        #    len(self.get_artifacts()), len(self.artifacts)))
 
     def get_artifacts(self, creator=None):
         """Get artifacts in the memory.
@@ -960,12 +959,15 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         # Create mappers for bin middle points
         self.q_state_mappers = []
         self.bin_size = (self.aesthetic_bounds[1] - self.aesthetic_bounds[0]) / self.q_bins
+        self.bin_borders = []
         for i in range(self.q_bins):
             start = self.aesthetic_bounds[0] + i * self.bin_size
+            self.bin_borders.append(start)
             end = start + self.bin_size
             target = (start + end) / 2
             mapper, _ = self._create_mapper(target)
             self.q_state_mappers.append(mapper)
+        self.bin_borders.append(self.aesthetic_bounds[1])
 
     def get_best_state(self, addr):
         """Returns the best aesthetic target for the addr. Requires state-Q as
@@ -1016,7 +1018,8 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         else:
             raise ValueError("Aesthetic '{}' not recognized"
                              .format(self.aesthetic))
-        dlm = DoubleLinearMapper(feat.MIN, new_target, feat.MAX)
+        #dlm = DoubleLinearMapper(feat.MIN, new_target, feat.MAX)
+        dlm = LinearDiffMapper(feat.MIN, new_target, feat.MAX)
         return dlm, feat
 
     def _target_to_state(self):
@@ -1037,6 +1040,33 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             else:
                 self.collab_arts['mtgt'].append(self.adjusted_aesthetic_target)
             self.collab_arts['ctgt'].append(ctgt)
+
+    def get_memory_histogram(self, density=False):
+        """Return the histogram of artifacts in the agent's memory.
+
+        Bins of the histogram are the same as the bins for the state-Q.
+        """
+        feat_vals = []
+        for a in self.stmem.get_artifacts():
+            feat_val = a.get_feature_value(self.aesthetic)
+            if feat_val is not None:
+                feat_vals.append(feat_val)
+        hgram = np.histogram(feat_vals, self.bin_borders)
+        self._log(logging.DEBUG, "Memory: {:<10} HG:{}".format(self.aesthetic.upper(), hgram[0]))
+        return hgram[0]
+
+    def get_new_target_bin(self, width=4):
+        def get_current_bin():
+            for i, b in enumerate(self.bin_borders):
+                if self.aesthetic_target < b:
+                    return i - 1
+            return i - 1
+
+        b = get_current_bin()
+        hg = self.get_memory_histogram()
+        lo_bin = b - width if b - width > 0 else 0
+        hi_bin = b + width + 1 if b + width + 1 < self.q_bins else self.q_bins
+        filtered_hg = hg[lo_bin:hi_bin]
 
     @aiomas.expose
     def get_adjusted_aesthetic_target(self):
@@ -1190,7 +1220,19 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                 artifact.add_eval(self, evaluation, fr)
                 return evaluation, fr
 
-        feat_val = self.R[0].feat.extract(artifact)
+        # Compute the feature value only if it has not been stored in the artifact already.
+        try:
+            _feat_val = artifact.get_feature_value(self.aesthetic)
+            #print(artifact._feat_vals, self.aesthetic)
+            if _feat_val is not None:
+                #self._log(logging.DEBUG, "Using stored feature value {}".format(_feat_val))
+                feat_val = _feat_val
+            else:
+                feat_val = self.R[0].feat.extract(artifact)
+                artifact.add_feature_value(self.aesthetic, feat_val)
+                #self._log(logging.DEBUG, "Computed the feature value {}".format(feat_val))
+        except Exception:
+            print(traceback.format_exc())
 
         # If we are currently in collaboration and are adjusting our target for the collaboration,
         # then we use the adjusted mapper.
@@ -1243,11 +1285,10 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             self.drift_towards_targets()
 
     def accumulate_curiosity(self, feat_val):
+        """Accumulate curiosity based on observed feature value.
+        """
         abs_diff = abs(self.aesthetic_target - feat_val)
-        if abs_diff > self.bin_size * 2:
-            # Feat value is too far away to accumulate curiosity.
-            return
-        else:
+        if abs_diff < self.bin_size * 2:
             curiosity = 1 - (abs_diff / (self.bin_size * 2))
             self.accumulated_curiosity += curiosity
 
@@ -1405,6 +1446,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
     @aiomas.expose
     async def act(self, *args, **kwargs):
         ret = await super().act(*args, **kwargs)
+        hgram = self.memory_histogram()
         return ret
 
 

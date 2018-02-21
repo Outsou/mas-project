@@ -74,6 +74,20 @@ class GeneticImageArtifact(Artifact):
         # Artifact ID #
         self.aid = None
         self.rank = None
+        self._feat_vals = {}    # Objective feature values for each feature.
+
+    def add_feature_value(self, feat, val):
+        """Add objective feature value for given feature.
+        """
+        self._feat_vals[feat] = val
+
+    def get_feature_value(self, feat):
+        """Return objective feature value for given feature, or ``None`` if it is not found.
+        """
+        #print(feat, self._feat_vals)
+        if feat in self._feat_vals:
+            return self._feat_vals[feat]
+        return None
 
     @staticmethod
     def artifact_from_file(fname, pset):

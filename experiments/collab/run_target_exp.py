@@ -162,7 +162,7 @@ def create_agents(agent_cls, menv, params, log_folder, save_folder,
             feat = ImageComplexityFeature
         aesthetic_bounds = params['bounds'][aesthetic]
         aesthetic_target = random.uniform(*aesthetic_bounds)
-        dlm = DoubleLinearMapper(feat.MIN, aesthetic_target, feat.MAX, '01')
+        dlm = LinearDiffMapper(feat.MIN, aesthetic_target, feat.MAX, '01')
         rules = [RuleLeaf(feat(), dlm)]
         rule_weights = [1.0]
         create_kwargs, funnames = get_create_kwargs(20, shape, 8)
