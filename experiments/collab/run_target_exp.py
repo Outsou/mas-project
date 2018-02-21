@@ -162,7 +162,7 @@ def create_agents(agent_cls, menv, params, log_folder, save_folder,
             feat = ImageComplexityFeature
         aesthetic_bounds = params['bounds'][aesthetic]
         aesthetic_target = random.uniform(*aesthetic_bounds)
-        dlm = LinearDiffMapper(feat.MIN, aesthetic_target, feat.MAX, '01')
+        dlm = LinearDiffMapper(feat.MIN, aesthetic_target, feat.MAX)
         rules = [RuleLeaf(feat(), dlm)]
         rule_weights = [1.0]
         create_kwargs, funnames = get_create_kwargs(20, shape, 8)
@@ -177,6 +177,7 @@ def create_agents(agent_cls, menv, params, log_folder, save_folder,
                                           aesthetic_drift_amount=params['drift_amount'],
                                           drifting_prob=params['drift_prob'],
                                           target_adjustment=params['target_adjustment'],
+                                          curious_behavior=params['curious_behavior'],
                                           create_kwargs=create_kwargs,
                                           rules=rules,
                                           rule_weights=rule_weights,
@@ -342,6 +343,13 @@ if __name__ == "__main__":
                              "selector: selector adjusts its target to what it perceives best w.r.t. selected agent\n"
                              "selected: selected adjusts its target to what it perceives best w.r.t. selector agent",
                         default='static')
+    parser.add_argument('-c', metavar='curious behavior', type=str,
+                        dest='curious_behavior',
+                        help="Agent's curious behavior, only applicable with state-Q\n"
+                             "static: No curiosity\n"
+                             "personal: Only personal artifacts accumulate curiosity\n"
+                             "social: All seen artifacts (personal or others) accumulate curiosity",
+                        default='static')
     parser.add_argument('-l', metavar='folder', type=str, dest='save_folder',
                         help="Base folder to save the test run. Actual save "
                              "folder is created as a subfolder to the base " 
@@ -364,6 +372,7 @@ if __name__ == "__main__":
     params['drift_prob'] = args.drift_prob
     params['drift_speed'] = args.drift_speed
     params['target_adjustment'] = args.target_adjustment
+    params['curious_behavior'] = args.curious_behavior
     base_path = os.path.join(".", args.save_folder, args.model)
     os.makedirs(base_path, exist_ok=True)
     log_folder = 'foo'

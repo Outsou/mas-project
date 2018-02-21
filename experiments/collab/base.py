@@ -924,11 +924,12 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         # 'personal': only accumulating curiosity from own artifacts
         # 'social': accumulating curiosity from both own and others artifacts.
         self.curious_behavior = kwargs.pop('curious_behavior', 'static')
-        self.curious_threshold = 1 / self.drifting_prob
+        self.curious_threshold = 1 / (self.drifting_prob * 0.5)
         if self.curious_behavior == 'social':
             # We had to use MATH to come up with this multiplication factor!
-            self.curious_threshold = 2.5 * self.curious_threshold
+            self.curious_threshold = 2.1 * self.curious_threshold
         self.accumulated_curiosity = 0.0
+        self._number_of_target_changes = 0
 
         super().__init__(*args, **kwargs)
 
@@ -968,6 +969,26 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             mapper, _ = self._create_mapper(target)
             self.q_state_mappers.append(mapper)
         self.bin_borders.append(self.aesthetic_bounds[1])
+
+    def save_general_info(self):
+        sfold = self.artifact_save_folder
+        info = {'aesthetic': self.aesthetic,
+                'aesthetic_bounds': self.aesthetic_bounds,
+                'aesthetic_target': self.aesthetic_target,
+                'aesthetic_drift_amount': self.aesthetic_drift_amount,
+                'drifting_prob': self.drifting_prob,
+                'drifting_speed': self.drifting_speed,
+                'target_adjustment': self.target_adjustment,
+                'curious_behavior': self.curious_behavior,
+                'curious_threshold': self.curious_threshold,
+                'pset_names': self.pset_names,
+                'collab_hof_size': self.collab_hof_size,
+                'addr': self.addr,
+                'collab_model': self.collab_model,
+                'collab_iters': self.collab_iters}
+
+        with open(os.path.join(sfold, 'general_info.pkl'), 'wb') as f:
+            pickle.dump(info, f)
 
     def get_best_state(self, addr):
         """Returns the best aesthetic target for the addr. Requires state-Q as
@@ -1052,10 +1073,23 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             if feat_val is not None:
                 feat_vals.append(feat_val)
         hgram = np.histogram(feat_vals, self.bin_borders)
-        self._log(logging.DEBUG, "Memory: {:<10} HG:{}".format(self.aesthetic.upper(), hgram[0]))
+        self._log(logging.DEBUG, "{:<10} Memory HG:{}".format(self.aesthetic.upper(), hgram[0]))
         return hgram[0]
 
-    def get_new_target_bin(self, width=4):
+    def get_new_curious_target(self, width=4, choose_from=3):
+        """Chooses new target using curiosity (based on the memory and state-Q values).
+
+        :param int width:
+            How many adjacent states (bins) are considered as suitable targets. Actual number
+            of considered states is at most width * 2 + 1.
+
+        :param int choose_from:
+            How many choosable states are left from suitable targets after filtering the suitable
+            target states using the histogram of memory artifacts.
+
+        :returns:
+            New target for the agent.
+        """
         def get_current_bin():
             for i, b in enumerate(self.bin_borders):
                 if self.aesthetic_target < b:
@@ -1066,7 +1100,28 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         hg = self.get_memory_histogram()
         lo_bin = b - width if b - width > 0 else 0
         hi_bin = b + width + 1 if b + width + 1 < self.q_bins else self.q_bins
+        # Suitable states (bin numbers)
+        states = list(range(lo_bin, hi_bin))
+        # Suitable states' histogram bins
         filtered_hg = hg[lo_bin:hi_bin]
+        # Zip and sort the states using histogram values (from lowest to highest)
+        states_hg = sorted(list(zip(states, filtered_hg)), key=lambda x: x[1])
+        #print(states_hg)
+        # Get 'choose_from' best states from the sorted list
+        filtered_states = [e[0] for e in states_hg[:choose_from]]
+        #print(filtered_states)
+        # Get best state (bin number) from the filtered states using Q-values
+        new_target_bin = self.learner.get_best_top_n_state(filtered_states, 4)
+        #print(new_target_bin, self.bin_borders[new_target_bin], self.bin_borders[new_target_bin + 1])
+        # Randomize a target within the bounds of the chosen bin.
+        b_lo = self.bin_borders[new_target_bin]
+        b_hi = self.bin_borders[new_target_bin + 1]
+        new_target = np.random.uniform(b_lo, b_hi)
+        self._number_of_target_changes += 1
+        self._log(logging.DEBUG, "Chose curious target: {:.3f} -> {:.3f} (Changes: {})"
+                  .format(self.aesthetic_target, new_target, self._number_of_target_changes))
+        return new_target
+
 
     @aiomas.expose
     def get_adjusted_aesthetic_target(self):
@@ -1139,9 +1194,12 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             self._drift_aest_list = _compute_drift_waypoints(self.aesthetic_target,
                                                              self._drift_aest_target,
                                                              self.drifting_speed)
+            self._number_of_target_changes += 1
             self._log(logging.DEBUG,
-                      "Set AES drifting target to {:.3f} (from {:.3f})".format(
-                          float(self._drift_aest_target), self.aesthetic_target))
+                      "Set AES drifting target to {:.3f} -> {:.3f} ({})".format(
+                          self.aesthetic_target,  self._drift_aest_target,
+                          self._number_of_target_changes))
+
             if self.novelty_target is not None:
                 self._drift_novelty_target = _get_new_target(self.novelty_target,
                                                              self.novelty_bounds,
@@ -1182,7 +1240,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             self._is_drifting = False
             self._drift_aest_list = None
             self._drift_novelty_list = None
-            self._log(logging.DEBUG, "Stopped drifting.")
+            #self._log(logging.DEBUG, "Stopped drifting.")
 
     @aiomas.expose
     def evaluate(self, artifact, use_png_compression=True):
@@ -1278,7 +1336,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             if r < self.drifting_prob:
                 self.change_targets()
         elif self.accumulated_curiosity > self.curious_threshold:
-            self.change_targets()
+            self.aesthetic_target = self.get_new_curious_target()
             # Curiosity is erased when the target is changed.
             self.accumulated_curiosity = 0.0
         if self._is_drifting:
@@ -1291,6 +1349,9 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         if abs_diff < self.bin_size * 2:
             curiosity = 1 - (abs_diff / (self.bin_size * 2))
             self.accumulated_curiosity += curiosity
+            self._log(logging.DEBUG, "Accumulated curiosity {:.3f} now: {:.3f}/{:.3f} ({})"
+                      .format(curiosity, self.accumulated_curiosity, self.curious_threshold,
+                              self._number_of_target_changes))
 
     @aiomas.expose
     def show_artifact(self, artifact, collab=False):
@@ -1365,7 +1426,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             e, fr = self.evaluate(best)
 
             if self.curious_behavior in ['personal', 'social']:
-                self.accumulated_curiosity(fr['feat_val'])
+                self.accumulate_curiosity(fr['feat_val'])
 
             #print("Evals: {}".format(best.evals))
             #print("Framings: {}".format(best.framings))
@@ -1446,7 +1507,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
     @aiomas.expose
     async def act(self, *args, **kwargs):
         ret = await super().act(*args, **kwargs)
-        hgram = self.memory_histogram()
+        hgram = self.get_memory_histogram()
         return ret
 
 
