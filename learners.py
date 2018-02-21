@@ -331,3 +331,19 @@ class MultiLearner():
         for state, vals in self.q_vals.items():
             state_vals[state] = vals[addr]
         return self.sort_addr_dict(state_vals, reverse=True)
+
+    def get_best_top_n_state(self, states, n):
+        """
+        Returns the state in states that has the highest sum for top n addrs.
+        :param states:
+            List of states from which the best state is calculated.
+        :param n:
+            The top n q_values for each state that are summed.
+        :return:
+            The state that has highest sum of the top n values.
+        """
+        state_vals = {}
+        for state in states:
+            vals = sorted(self.q_vals[state].values(), reverse=True)
+            state_vals[state] = sum(vals[:n])
+        return self.sort_addr_dict(state_vals)
