@@ -1014,7 +1014,7 @@ def create_top_k_val_nov_plot(top_pick_stats, model):
         plt.xlabel('step')
         plt.ylabel(val)
         plt.legend()
-        plt.ylim(0.4, 0.7)
+        # plt.ylim(0.4, 0.7)
         fig = plt.gcf()
         fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
         plt.tight_layout()
@@ -1039,7 +1039,7 @@ def create_val_nov_plot(step_pick_stat_dict, mean_solo_vals):
         plt.xlabel('step')
         plt.ylabel(val)
         plt.legend()
-        plt.ylim(0.4, 0.7)
+        # plt.ylim(0.4, 0.7)
         fig = plt.gcf()
         fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
         plt.tight_layout()
@@ -1098,6 +1098,18 @@ def create_movement_plots(targets, window_size=10):
         plt.tight_layout()
         plt.savefig('area_covered_{}.pdf'.format(aest))
         plt.close()
+
+
+def create_target_dist_plots(targets):
+    models = sorted(targets.keys(), key=lambda x: MODEL_ORDER.index(x))
+    aests = list(targets[models[0]].keys())
+
+    for aest in aests:
+        for model in models:
+            appended_targets = sum(targets[model][aest], [])
+            sns.distplot(appended_targets, kde=False)
+            plt.savefig('target_dist_{}_{}.pdf'.format(model, aest))
+            plt.close()
 
 
 def make_aest_val_table_and_image(own_art_stats, ind_eval_stats, pairs, collab_eval_stats, format_s, img_name = None):
@@ -1499,3 +1511,4 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
 
     # Make target movement plots
     create_movement_plots(targets)
+    create_target_dist_plots(targets)
