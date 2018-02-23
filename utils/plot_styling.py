@@ -5,7 +5,7 @@ import seaborn as sns
 COLORS = sns.color_palette('colorblind')
 
 # Order legends using these
-MODEL_ORDER = ['random', 'lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3']
+MODEL_ORDER = ['random', 'lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3', 'state-Q-cur']
 AEST_ORDER = ['benford', 'entropy', 'global_contrast_factor', 'symm', 'fd_aesthetics', 'complexity']
 AEST_SHORT_LABELS = ['BLW', 'ENT', 'GCF', 'SYM', 'FRD', 'CPX']
 
@@ -78,6 +78,12 @@ MODEL_STYLES = {
           'color': COLORS[5],
           'dashes': [5, 2, 1, 2, 1, 2]
           },
+    'state-Q-cur':
+        {'line style': '--',
+         'label': 'state-Q (curious)',
+         'color': COLORS[3],
+         'dashes': [5, 2, 1, 2, 1, 2]
+         },
 }
 
 # Generic styles for different aesthetics
