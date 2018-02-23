@@ -12,6 +12,7 @@ import seaborn as sns
 from pandas.plotting import table
 import pandas as pd
 from utils.plot_styling import MODEL_STYLES, MODEL_ORDER, BASE_FIG_SIZE
+from operator import itemgetter
 
 
 def _average_arrays(stats, shape, key, sub_key=None):
@@ -692,6 +693,7 @@ def analyze_collab_arts(dirs):
     aesthetic_pair_stats = {}
     aesthetic_stats = {}
     initializer_stats = {}
+    tgt_val_stats = {}
 
     for dir in dirs:
         sub_dirs = get_dirs_in_dir(dir)
@@ -705,6 +707,8 @@ def analyze_collab_arts(dirs):
                 aesthetic_stats[aest] = {}
             if aest not in initializer_stats:
                 initializer_stats[aest] = {}
+            if aest not in tgt_val_stats:
+                tgt_val_stats[aest] = []
 
             for i in range(len(collab_arts_dict['fb'])):
                 caest = collab_arts_dict['caest'][i]
@@ -719,6 +723,8 @@ def analyze_collab_arts(dirs):
                     aesthetic_stats[aest][caest]['eval'].append(collab_arts_dict['eval'][idx])
                     aesthetic_stats[aest][caest]['val'].append(collab_arts_dict['val'][idx])
                     aesthetic_stats[aest][caest]['nov'].append(collab_arts_dict['nov'][idx])
+                    tgt_val_stats[aest].append((collab_arts_dict['tgt'][i],
+                                                collab_arts_dict['val'][idx]))
 
             # Calculate how often aesthetic pairs succeeded and failed
             for i in range(len(collab_arts_dict['fb'])):
@@ -793,6 +799,7 @@ def analyze_collab_arts(dirs):
     collab_art_stats['aesthetic_pairs'] = aesthetic_pair_stats
     collab_art_stats['aesthetic'] = aesthetic_stats
     collab_art_stats['init_stats'] = initializer_stats
+    collab_art_stats['tgt_val'] = tgt_val_stats
 
     return collab_art_stats
 
@@ -810,6 +817,8 @@ def count_first(pref_lists, addr):
 def analyze_own_arts(dirs):
     own_art_stats = common_agent_analysis(dirs, 'own_arts.pkl')
     own_art_stats['tgts'] = {}
+    own_art_stats['tgt_val'] = {}
+    own_art_stats['tgt_bounds'] = {}
     skill_dict = {}
     first_dir = os.path.split(dirs[0])[1]
     iters = int(int(re.findall(r'i\d+', first_dir)[0][1:]) / 2)
@@ -842,12 +851,15 @@ def analyze_own_arts(dirs):
 
             if aest not in own_art_stats['tgts']:
                 own_art_stats['tgts'][aest] = []
+                own_art_stats['tgt_val'][aest] = []
+                own_art_stats['tgt_bounds'][aest] = general_info['aesthetic_bounds']
 
             aest_stats[aest]['evals'] += own_arts['eval']
             aest_stats[aest]['vals'] += own_arts['val']
             aest_stats[aest]['novs'] += own_arts['nov']
 
             own_art_stats['tgts'][aest].append(own_arts['tgt'])
+            own_art_stats['tgt_val'][aest] += list(zip(own_arts['tgt'], own_arts['val']))
 
             skill_dict[num_of_skills]['val'] += own_arts['val']
 
@@ -1259,6 +1271,36 @@ def make_pair_count_bar_graph_all(pair_counts):
     plt.show()
 
 
+def create_value_bar_charts(tgt_val_solo, tgt_val_collab, aest_bounds, buckets=20):
+    def get_states_vals(tgt_vals, b_size):
+        bucket_vals = {}
+        for i in range(buckets):
+            bucket_vals[i] = []
+        for tgt, val in tgt_vals[model][aest]:
+            bucket = int((tgt - aest_bounds[aest][0]) / b_size - 0.000001)
+            bucket_vals[bucket].append(val)
+        for bucket in bucket_vals.keys():
+            bucket_vals[bucket] = np.mean(bucket_vals[bucket])
+        states_vals = sorted(bucket_vals.items(), key=itemgetter(0))
+        return zip(*states_vals)
+
+
+    models = sorted(tgt_val_solo.keys(), key=lambda x: MODEL_ORDER.index(x))
+    aests = list(tgt_val_solo[models[0]].keys())
+
+    for model in models:
+        for aest in aests:
+            b_size = (aest_bounds[aest][1] - aest_bounds[aest][0]) / buckets
+            states_solo, vals_solo = get_states_vals(tgt_val_solo, b_size)
+            states_collab, vals_collab = get_states_vals(tgt_val_collab, b_size)
+            bar_width = 0.4
+            plt.bar(states_solo, vals_solo, width=bar_width, label='solitary')
+            plt.bar(np.array(states_collab) + bar_width, vals_collab, width=bar_width, label='collab')
+            plt.legend()
+            plt.savefig('bucket_val_{}_{}.pdf'.format(model, aest))
+            plt.close()
+
+
 def make_pair_count_bar_graph(pair_counts, model):
     failed_counts = []
     succeeded_counts = []
@@ -1354,6 +1396,8 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     eval_ratios = {}
     pair_counts = {}
     targets = {}
+    tgt_val_solo = {}
+    tgt_val_collab = {}
 
     for model_dir in model_dirs:
         model = os.path.split(model_dir)[1]
@@ -1455,6 +1499,8 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
             print('{}:\t\t{}/{}'.format(skill_amount, stats['count'], val))
 
         targets[model] = own_art_stats['tgts']
+        tgt_val_solo[model] = own_art_stats['tgt_val']
+        tgt_val_collab[model] = collab_art_stats['tgt_val']
 
 
     # make_pair_count_bar_graph_all(pair_counts)
@@ -1512,3 +1558,6 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     # Make target movement plots
     create_movement_plots(targets)
     create_target_dist_plots(targets)
+
+    # Make value bar chart
+    create_value_bar_charts(tgt_val_solo, tgt_val_collab, own_art_stats['tgt_bounds'])
