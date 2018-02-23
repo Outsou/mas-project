@@ -1148,6 +1148,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             scale_factor = 1.0 / self.q_bins
             return [1 - (abs(current_bin - i) * scale_factor) for i in range(self.q_bins)]
 
+        current_bin = get_current_bin()
         hg = self.get_memory_histogram()
         states = range(0, self.q_bins)
         # Zip and sort the states using histogram values (from lowest to highest)
@@ -1166,8 +1167,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             #sorted_states_collab_potential = sorted(states_collab_potential, key=lambda x: x[1], reverse=True)
             #print(sorted_states_collab_potential)
             if scale_distance:
-                b = get_current_bin()
-                scale_factors = get_scale_values(b)
+                scale_factors = get_scale_values(current_bin)
                 #self._log(logging.DEBUG, "{}".format(states_collab_potential))
                 scaled_collab_potentials = [(i, scale_factors[i] * e) for i, e in states_collab_potential]
                 sorted_pots = sorted(scaled_collab_potentials, key=lambda x: x[1], reverse=True)
@@ -1183,8 +1183,8 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         new_target = np.random.uniform(b_lo, b_hi)
         self._number_of_target_changes += 1
         self._log(logging.DEBUG, "{:<10} new curious target: {}:{:.3f} -> {}:{:.3f} (Changes: {})"
-                  .format(self.aesthetic.upper(), b, self.aesthetic_target, new_target_bin,
-                          new_target, self._number_of_target_changes))
+                  .format(self.aesthetic.upper(), current_bin, self.aesthetic_target,
+                          new_target_bin, new_target, self._number_of_target_changes))
         return new_target
 
 
