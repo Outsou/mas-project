@@ -347,3 +347,16 @@ class MultiLearner():
             vals = sorted(self.q_vals[state].values(), reverse=True)
             state_vals[state] = sum(vals[:n])
         return self.sort_addr_dict(state_vals)
+
+    def filter_states(self):
+        """
+        Returns a set of states where no addr has its highest value and a set of the states where some addr
+        has its highest value.
+        """
+        occupied = set()
+        for addr in self.addrs:
+            vals = [(state, self.q_vals[state][addr]) for state in self.q_vals.keys()]
+            best_state = sorted(vals, key=itemgetter(1), reverse=True)[0][0]
+            occupied.add(best_state)
+        free = set(self.q_vals.keys()) - occupied
+        return free, occupied
