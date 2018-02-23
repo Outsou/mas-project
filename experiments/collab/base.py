@@ -928,7 +928,8 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         if self.curious_behavior == 'social':
             # We had to use MATH to come up with this multiplication factor!
             self.curious_threshold = 2.1 * self.curious_threshold
-        self.curious_threshold = 1.0
+        self.curious_use_distance_scale = kwargs.pop('use_distance_scale', False)
+        #print("Scale: {} {}".format(self.curious_use_distance_scale, type(self.curious_use_distance_scale)))
         self.accumulated_curiosity = 0.0
         self._number_of_target_changes = 0
         self.last_target_change = 0
@@ -1120,8 +1121,9 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         b_hi = self.bin_borders[new_target_bin + 1]
         new_target = np.random.uniform(b_lo, b_hi)
         self._number_of_target_changes += 1
-        self._log(logging.DEBUG, "Chose curious target: {:.3f} -> {:.3f} (Changes: {})"
-                  .format(self.aesthetic_target, new_target, self._number_of_target_changes))
+        self._log(logging.DEBUG, "{:<10} new curious target: {:.3f} -> {:.3f} (Changes: {})"
+                  .format(self.aesthetic.upper(), self.aesthetic_target, new_target,
+                          self._number_of_target_changes))
         return new_target
 
     def get_new_curious_target2(self, remove_n_largest=4, scale_distance=False):
@@ -1142,8 +1144,10 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                     return i - 1
             return i - 1
 
+        def get_scale_values(current_bin):
+            scale_factor = 1.0 / self.q_bins
+            return [1 - (abs(current_bin - i) * scale_factor) for i in range(self.q_bins)]
 
-        b = get_current_bin()
         hg = self.get_memory_histogram()
         states = range(0, self.q_bins)
         # Zip and sort the states using histogram values (from lowest to highest)
@@ -1153,15 +1157,24 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         free, occupied = self.learner.filter_states()
         # Collect states that are not occupied
         suitable_states = [shg[0] for shg in filtered_states_hg if shg[0] in free]
-        # Compute each states collaboration potentil
-        states_collab_potential = [(s, self.learner.get_best_top_n_state([s], 4)) for s in suitable_states]
-        print(states_collab_potential)
+        # Compute each state's collaboration potential
+        states_collab_potential = self.learner.get_best_top_n_state(suitable_states, 4)
+        #print(states_collab_potential)
         if len(states_collab_potential) == 0:
             new_target_bin = states_hg[0][0]
         else:
-            sorted_states_collab_potential = sorted(states_collab_potential, key=lambda x: x[1], reverse=True)
-            print(sorted_states_collab_potential)
-            new_target_bin = sorted_states_collab_potential[0][0]
+            #sorted_states_collab_potential = sorted(states_collab_potential, key=lambda x: x[1], reverse=True)
+            #print(sorted_states_collab_potential)
+            if scale_distance:
+                b = get_current_bin()
+                scale_factors = get_scale_values(b)
+                #self._log(logging.DEBUG, "{}".format(states_collab_potential))
+                scaled_collab_potentials = [(i, scale_factors[i] * e) for i, e in states_collab_potential]
+                sorted_pots = sorted(scaled_collab_potentials, key=lambda x: x[1], reverse=True)
+                #self._log(logging.DEBUG, "{}".format(sorted_pots))
+                new_target_bin = sorted_pots[0][0]
+            else:
+                new_target_bin = states_collab_potential[0][0]
 
         #print(new_target_bin, self.bin_borders[new_target_bin], self.bin_borders[new_target_bin + 1])
         # Randomize a target within the bounds of the chosen bin.
@@ -1169,8 +1182,9 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         b_hi = self.bin_borders[new_target_bin + 1]
         new_target = np.random.uniform(b_lo, b_hi)
         self._number_of_target_changes += 1
-        self._log(logging.DEBUG, "Chose curious target: {:.3f} -> {:.3f} (Changes: {})"
-                  .format(self.aesthetic_target, new_target, self._number_of_target_changes))
+        self._log(logging.DEBUG, "{:<10} new curious target: {}:{:.3f} -> {}:{:.3f} (Changes: {})"
+                  .format(self.aesthetic.upper(), b, self.aesthetic_target, new_target_bin,
+                          new_target, self._number_of_target_changes))
         return new_target
 
 
@@ -1389,7 +1403,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                 self.change_targets()
                 self.last_target_change = self.age
         elif self.accumulated_curiosity > self.curious_threshold:
-            self.aesthetic_target = self.get_new_curious_target2()
+            self.aesthetic_target = self.get_new_curious_target2(scale_distance=self.curious_use_distance_scale)
             # Curiosity is erased when the target is changed.
             self.accumulated_curiosity = 0.0
             self.last_target_change = self.age
@@ -1402,7 +1416,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         if own_artifact:
             ldm, _ = self._create_mapper(self.aesthetic_target)
             value = ldm(feat_val)
-            n = self.age - (self.last_target_change + 1)
+            n = self.age - self.last_target_change
             curiosity = 1.0 / (value ** n)
             self.accumulated_curiosity += curiosity
             self._log(logging.DEBUG, "Accumulated curiosity {:.3f} now: {:.3f}/{:.3f} ({})"
@@ -1556,8 +1570,8 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             # It is questionable if we need these, however.
             passed = fr['pass_value'] and fr['pass_novelty']
             if passed:
-                self._log(logging.DEBUG,
-                          "Individual artifact passed thresholds")
+                #self._log(logging.DEBUG,
+                #          "Individual artifact passed thresholds")
                 self.learn(artifact)
 
             # Save artifact to save folder

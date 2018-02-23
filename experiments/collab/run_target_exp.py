@@ -178,6 +178,7 @@ def create_agents(agent_cls, menv, params, log_folder, save_folder,
                                           drifting_prob=params['drift_prob'],
                                           target_adjustment=params['target_adjustment'],
                                           curious_behavior=params['curious_behavior'],
+                                          use_distance_scale=params['use_distance_scale'],
                                           create_kwargs=create_kwargs,
                                           rules=rules,
                                           rule_weights=rule_weights,
@@ -350,6 +351,10 @@ if __name__ == "__main__":
                              "personal: Only personal artifacts accumulate curiosity\n"
                              "social: All seen artifacts (personal or others) accumulate curiosity",
                         default='static')
+    parser.add_argument('-u', action="store_true",
+                        dest='use_distance_scale',
+                        help="Use distance scale when choosing new curious target",
+                        default=False)
     parser.add_argument('-l', metavar='folder', type=str, dest='save_folder',
                         help="Base folder to save the test run. Actual save "
                              "folder is created as a subfolder to the base " 
@@ -364,6 +369,7 @@ if __name__ == "__main__":
 
     # DEFINE TEST PARAMETERS
     params = DEFAULT_PARAMS
+    print(args.use_distance_scale, type(args.use_distance_scale))
     params['agents'] = args.agents
     params['novelty_weight'] = args.novelty
     params['num_of_steps'] = args.steps
@@ -373,6 +379,7 @@ if __name__ == "__main__":
     params['drift_speed'] = args.drift_speed
     params['target_adjustment'] = args.target_adjustment
     params['curious_behavior'] = args.curious_behavior
+    params['use_distance_scale'] = args.use_distance_scale
     base_path = os.path.join(".", args.save_folder, args.model)
     os.makedirs(base_path, exist_ok=True)
     log_folder = 'foo'
