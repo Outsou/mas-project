@@ -1100,6 +1100,36 @@ def create_movement_plots(targets, window_size=10):
         plt.close()
 
 
+def create_movement_plots_3D(targets, window_size=10):
+    def calculate_areas(tgt_list):
+        area_list = []
+        for i in range(len(tgt_list) - window_size):
+            tgts = tgt_list[i:i+window_size]
+            area_list.append((min(tgts), max(tgts)))
+        return area_list
+
+    models = sorted(targets.keys(), key=lambda x: MODEL_ORDER.index(x))
+    aests = list(targets[models[0]].keys())
+
+    for aest in aests:
+        for model in models:
+            areas = []
+            for tgt_list in targets[model][aest]:
+                areas.append(calculate_areas(tgt_list))
+            areas = np.mean(areas, axis=0)
+            style = MODEL_STYLES[model]
+            plt.plot(list(range(window_size, len(tgt_list))), areas, style['line style'],
+                     dashes=style['dashes'], label=style['label'], color=style['color'])
+        plt.xlabel('step')
+        plt.xlabel('area')
+        plt.legend()
+        fig = plt.gcf()
+        fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
+        plt.tight_layout()
+        plt.savefig('area_covered_{}.pdf'.format(aest))
+        plt.close()
+
+
 def create_target_dist_plots(targets):
     models = sorted(targets.keys(), key=lambda x: MODEL_ORDER.index(x))
     aests = list(targets[models[0]].keys())

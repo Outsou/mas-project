@@ -757,7 +757,6 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=[]):
     means = {}
     means_rev = {}
     c_selections = {}
-    print(model_dirs)
     old_collab = True
     for m in model_dirs:
         if m.endswith('state-Q'):

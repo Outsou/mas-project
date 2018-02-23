@@ -1122,6 +1122,47 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                   .format(self.aesthetic_target, new_target, self._number_of_target_changes))
         return new_target
 
+    def get_new_curious_target2(self, remove_n_largest=4, scale_distance=False):
+        """Chooses new target using curiosity (based on the memory and state-Q values).
+
+        :param int remove_n_largest:
+            Remove *n* bins with the most artifacts in the memory from the new target consideration.
+
+        :param int scale_distance:
+            Scale each bins potential for new target with the distance to the current target.
+
+        :returns:
+            New target for the agent.
+        """
+        def get_current_bin():
+            for i, b in enumerate(self.bin_borders):
+                if self.aesthetic_target < b:
+                    return i - 1
+            return i - 1
+
+
+        b = get_current_bin()
+        hg = self.get_memory_histogram()
+        states = range(0, self.q_bins)
+        # Zip and sort the states using histogram values (from lowest to highest)
+        states_hg = sorted(list(zip(states, hg)), key=lambda x: x[1])
+        # Remove *n* largest states
+        filtered_states_hg = states_hg[:-remove_n_largest]
+
+
+        # Get best state (bin number) from the filtered states using Q-values
+        new_target_bin = 0
+        #print(new_target_bin, self.bin_borders[new_target_bin], self.bin_borders[new_target_bin + 1])
+        # Randomize a target within the bounds of the chosen bin.
+        b_lo = self.bin_borders[new_target_bin]
+        b_hi = self.bin_borders[new_target_bin + 1]
+        new_target = np.random.uniform(b_lo, b_hi)
+        self._number_of_target_changes += 1
+        self._log(logging.DEBUG, "Chose curious target: {:.3f} -> {:.3f} (Changes: {})"
+                  .format(self.aesthetic_target, new_target, self._number_of_target_changes))
+        return new_target
+
+
 
     @aiomas.expose
     def get_adjusted_aesthetic_target(self):

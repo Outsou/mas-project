@@ -80,9 +80,9 @@ MODEL_STYLES = {
           },
     'state-Q-cur':
         {'line style': '--',
-         'label': 'state-Q (curious)',
+         'label': 'state-Q (cur)',
          'color': COLORS[3],
-         'dashes': [5, 2, 1, 2, 1, 2]
+         'dashes': [5, 2, 2, 2]
          },
 }
 
