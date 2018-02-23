@@ -1116,6 +1116,11 @@ def create_movement_plots_3D(targets, window_size=10):
             areas = []
             for tgt_list in targets[model][aest]:
                 areas.append(calculate_areas(tgt_list))
+
+            for i in len(areas[0]):
+                
+
+
             areas = np.mean(areas, axis=0)
             style = MODEL_STYLES[model]
             plt.plot(list(range(window_size, len(tgt_list))), areas, style['line style'],

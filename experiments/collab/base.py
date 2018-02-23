@@ -928,8 +928,10 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         if self.curious_behavior == 'social':
             # We had to use MATH to come up with this multiplication factor!
             self.curious_threshold = 2.1 * self.curious_threshold
+        self.curious_threshold = 1.0
         self.accumulated_curiosity = 0.0
         self._number_of_target_changes = 0
+        self.last_target_change = 0
 
         super().__init__(*args, **kwargs)
 
@@ -1148,10 +1150,19 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         states_hg = sorted(list(zip(states, hg)), key=lambda x: x[1])
         # Remove *n* largest states
         filtered_states_hg = states_hg[:-remove_n_largest]
+        free, occupied = self.learner.filter_states()
+        # Collect states that are not occupied
+        suitable_states = [shg[0] for shg in filtered_states_hg if shg[0] in free]
+        # Compute each states collaboration potentil
+        states_collab_potential = [(s, self.learner.get_best_top_n_state([s], 4)) for s in suitable_states]
+        print(states_collab_potential)
+        if len(states_collab_potential) == 0:
+            new_target_bin = states_hg[0][0]
+        else:
+            sorted_states_collab_potential = sorted(states_collab_potential, key=lambda x: x[1], reverse=True)
+            print(sorted_states_collab_potential)
+            new_target_bin = sorted_states_collab_potential[0][0]
 
-
-        # Get best state (bin number) from the filtered states using Q-values
-        new_target_bin = 0
         #print(new_target_bin, self.bin_borders[new_target_bin], self.bin_borders[new_target_bin + 1])
         # Randomize a target within the bounds of the chosen bin.
         b_lo = self.bin_borders[new_target_bin]
@@ -1376,23 +1387,35 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         if self.curious_behavior == 'static':
             if r < self.drifting_prob:
                 self.change_targets()
+                self.last_target_change = self.age
         elif self.accumulated_curiosity > self.curious_threshold:
-            self.aesthetic_target = self.get_new_curious_target()
+            self.aesthetic_target = self.get_new_curious_target2()
             # Curiosity is erased when the target is changed.
             self.accumulated_curiosity = 0.0
+            self.last_target_change = self.age
         if self._is_drifting:
             self.drift_towards_targets()
 
-    def accumulate_curiosity(self, feat_val):
+    def accumulate_curiosity(self, feat_val, own_artifact=False):
         """Accumulate curiosity based on observed feature value.
         """
-        abs_diff = abs(self.aesthetic_target - feat_val)
-        if abs_diff < self.bin_size * 2:
-            curiosity = 1 - (abs_diff / (self.bin_size * 2))
+        if own_artifact:
+            ldm, _ = self._create_mapper(self.aesthetic_target)
+            value = ldm(feat_val)
+            n = self.age - (self.last_target_change + 1)
+            curiosity = 1.0 / (value ** n)
             self.accumulated_curiosity += curiosity
             self._log(logging.DEBUG, "Accumulated curiosity {:.3f} now: {:.3f}/{:.3f} ({})"
                       .format(curiosity, self.accumulated_curiosity, self.curious_threshold,
                               self._number_of_target_changes))
+        else:
+            abs_diff = abs(self.aesthetic_target - feat_val)
+            if abs_diff < self.bin_size * 2:
+                curiosity = 1 - (abs_diff / (self.bin_size * 2))
+                self.accumulated_curiosity += curiosity
+                self._log(logging.DEBUG, "Accumulated curiosity {:.3f} now: {:.3f}/{:.3f} ({})"
+                          .format(curiosity, self.accumulated_curiosity, self.curious_threshold,
+                                  self._number_of_target_changes))
 
     @aiomas.expose
     def show_artifact(self, artifact, collab=False):
@@ -1467,7 +1490,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
             e, fr = self.evaluate(best)
 
             if self.curious_behavior in ['personal', 'social']:
-                self.accumulate_curiosity(fr['feat_val'])
+                self.accumulate_curiosity(fr['feat_val'], own_artifact=True)
 
             #print("Evals: {}".format(best.evals))
             #print("Framings: {}".format(best.framings))
@@ -1526,7 +1549,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                       .format(np.around(e, 2), v, n))
 
             if self.curious_behavior in ['personal', 'social']:
-                self.accumulate_curiosity(fr['feat_val'])
+                self.accumulate_curiosity(fr['feat_val'], own_artifact=True)
             #self.add_artifact(artifact)
 
             # Artifact is acceptable if it passes value and novelty thresholds.
