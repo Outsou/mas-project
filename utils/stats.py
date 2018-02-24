@@ -8,6 +8,8 @@ from experiments.collab.chk_runs import get_last_lines
 from tabulate import tabulate
 import scipy.stats as st
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from mpl_toolkits.mplot3d import Axes3D
 import seaborn as sns
 from pandas.plotting import table
 import pandas as pd
@@ -367,9 +369,9 @@ def common_society_analysis(dirs, pickle_name):
                 novs.append(pkl_dict[key][agent][1]['novelty'])
                 vals.append(pkl_dict[key][agent][1]['value'])
 
-    stat_dict['avg_eval'] = sum(evals) / len(evals)
-    stat_dict['avg_nov'] = sum(novs) / len(novs)
-    stat_dict['avg_val'] = sum(vals) / len(vals)
+    stat_dict['avg_eval'] = sum(evals) / len(evals) if len(evals) != 0 else 0
+    stat_dict['avg_nov'] = sum(novs) / len(novs) if len(novs) != 0 else 0
+    stat_dict['avg_val'] = sum(vals) / len(vals) if len(vals) != 0 else 0
 
     return stat_dict
 
@@ -1147,7 +1149,7 @@ def create_movement_plots_2D(targets, window_size=5):
             plt.close()
 
 
-def create_movement_plots_3D(targets, window_size=5):
+def create_movement_plots_3D(targets, window_size=10, runs=30):
     def calculate_areas(tgt_list):
         area_list = []
         mins = []
@@ -1162,37 +1164,76 @@ def create_movement_plots_3D(targets, window_size=5):
     def get_hg_bins(bounds, bins):
         bin_size = (bounds[1] - bounds[0]) / bins
         bin_borders = []
+        bmids = []
         for i in range(bins):
             start = bounds[0] + i * bin_size
             bin_borders.append(start)
             end = start + bin_size
+            bmids.append((start + end) / 2.0)
         bin_borders.append(bounds[1])
-        return bin_borders
+        return bin_borders, bmids
+
+    def add_to_hg(hg, borders, min_val, max_val):
+        min_bin = 0
+        max_bin = len(borders) - 1
+        while borders[min_bin] < min_val:
+            min_bin += 1
+        min_bin = min_bin - 1
+
+        c_bin = min_bin
+        while borders[c_bin] < max_val:
+            c_bin += 1
+        max_bin = c_bin
+
+        for b in range(min_bin, max_bin):
+            hg[b] += 1
 
     models = sorted(targets.keys(), key=lambda x: MODEL_ORDER.index(x))
     aests = list(targets[models[0]].keys())
 
     for aest in aests:
-        bins = 40
+        bins = 80
         bounds = [0.5, 1.8] if aest == 'complexity' else [0.5, 4.5]
-        bborders = get_hg_bins(bounds, bins)
+        bborders, bmids = get_hg_bins(bounds, bins)
 
         for model in models:
+            hgs = []
             areas = []
+            amins = []
+            amaxs = []
             for tgt_list in targets[model][aest]:
                 alist, mins, maxs = calculate_areas(tgt_list)
-                areas.append(calculate_areas(tgt_list))
+                amins.append(amins)
+                amaxs.append(amaxs)
+                areas.append(alist)
 
-                plt.fill_between(list(range(window_size, len(tgt_list))), mins, maxs, color=(0.5, 0.5, 1.0, 0.05))
+            for _ in range(len(areas[0])):
+                hgs.append([0 for _ in range(bins)])
 
-            #plt.fill_between(list(range(window_size, len(tgt_list))), mins, maxs, alpha=0.1)
-            plt.xlabel('step')
-            plt.xlabel('area')
-            plt.legend()
-            fig = plt.gcf()
-            fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
+            for i, alist in enumerate(areas):
+                for j, abounds in enumerate(alist):
+                    add_to_hg(hgs[j], bborders, abounds[0], abounds[1])
+
+            Z = np.array(hgs)
+            Z = Z / runs
+
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+            x = np.array(bmids)
+            y = np.array(list(range(window_size, len(tgt_list))))
+            X, Y = np.meshgrid(x, y)
+            ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap=cm.coolwarm, linewidth=0, antialiased=False)
+            ax.set_xlabel('{}'.format(aest.upper()))
+            ax.set_ylabel('Window')
+            ax.set_zlabel('Agents')
+            ax.invert_xaxis()
+
+            #plt.legend()
+            #fig = plt.gcf()
+            #fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
             plt.tight_layout()
-            plt.savefig('area_covered_{}_{}.pdf'.format(aest, model))
+            plt.show()
+            plt.savefig('area3D_covered_{}_{}.pdf'.format(aest, model))
             plt.close()
 
 
@@ -1445,6 +1486,7 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     sns.set_context("paper")
     model_dirs = sorted(get_dirs_in_dir(path), key=lambda x: LIST_ORDER.index(os.path.split(x)[1]))
     # model_dirs = sorted(get_dirs_in_dir(path))
+    print(model_dirs)
     format_s = '%.{}f'.format(decimals)
 
     rows = [['Collaboration success ratio'],
@@ -1642,7 +1684,7 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     # Make target movement plots
     create_movement_plots(targets)
     create_movement_plots_2D(targets)
-    #create_movement_plots_3D(targets)
+    create_movement_plots_3D(targets, runs=30)
     create_target_dist_plots(targets)
 
     # Make value bar chart
