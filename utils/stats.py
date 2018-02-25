@@ -1145,7 +1145,7 @@ def create_movement_plots_2D(targets, window_size=5):
             fig = plt.gcf()
             fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
             plt.tight_layout()
-            plt.savefig('area_covered_{}_{}.pdf'.format(aest, model))
+            plt.savefig('area2D_covered_{}_{}.pdf'.format(aest, model))
             plt.close()
 
 
@@ -1192,7 +1192,7 @@ def create_movement_plots_3D(targets, window_size=10, runs=30):
     aests = list(targets[models[0]].keys())
 
     for aest in aests:
-        bins = 80
+        bins = 20
         bounds = [0.5, 1.8] if aest == 'complexity' else [0.5, 4.5]
         bborders, bmids = get_hg_bins(bounds, bins)
 
@@ -1210,12 +1210,21 @@ def create_movement_plots_3D(targets, window_size=10, runs=30):
             for _ in range(len(areas[0])):
                 hgs.append([0 for _ in range(bins)])
 
+            print(len(hgs), len(areas), len(areas[0]))
+
             for i, alist in enumerate(areas):
                 for j, abounds in enumerate(alist):
                     add_to_hg(hgs[j], bborders, abounds[0], abounds[1])
 
             Z = np.array(hgs)
             Z = Z / runs
+
+            ax = sns.heatmap(Z, cmap="Greys")
+            ax.set_xlabel('{}'.format(aest.upper()))
+            ax.set_ylabel('Window')
+            plt.tight_layout()
+            plt.savefig('area_heatmap_{}_{}.pdf'.format(aest, model))
+            plt.close()
 
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
@@ -1480,7 +1489,7 @@ def smooth_success_ratios(success_ratios, window=2):
 def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     """The main function to call when analyzing runs."""
     # random needs to be last
-    LIST_ORDER = ['lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3', 'state-Q-cur', 'random']
+    LIST_ORDER = ['lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3', 'state-Q-cur', 'state-Q-C2S', 'state-Q-C2D', 'random']
     sns.set()
     sns.set_style("white")
     sns.set_context("paper")
