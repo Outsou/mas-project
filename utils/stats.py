@@ -1210,8 +1210,6 @@ def create_movement_plots_3D(targets, window_size=10, runs=30):
             for _ in range(len(areas[0])):
                 hgs.append([0 for _ in range(bins)])
 
-            print(len(hgs), len(areas), len(areas[0]))
-
             for i, alist in enumerate(areas):
                 for j, abounds in enumerate(alist):
                     add_to_hg(hgs[j], bborders, abounds[0], abounds[1])
