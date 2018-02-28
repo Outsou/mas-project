@@ -1149,7 +1149,7 @@ def create_movement_plots_2D(targets, window_size=5):
             plt.close()
 
 
-def create_movement_plots_3D(targets, window_size=10, runs=30):
+def create_movement_plots_3D(targets, window_size=1, runs=30):
     def calculate_areas(tgt_list):
         area_list = []
         mins = []

@@ -774,7 +774,7 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=[]):
         means[model] = cumulative_collab_partner_means
         means_rev[model] = cumulative_collab_partners_rev_means
         c_selections[model] = collab_selections
-        print(np.min(collab_selections), np.max(collab_selections))
+        #print(np.min(collab_selections), np.max(collab_selections))
         print("***************************************************\n")
 
     create_aesthetic_collab_heatmap(c_selections, old_collab)

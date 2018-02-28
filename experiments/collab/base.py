@@ -1229,9 +1229,10 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         and setting ``aesthetic_target`` during the same run may cause
         unexpected behavior.
         """
-        def _get_new_target(cur_target, bounds, drift_amount):
-            # Create new drifting target within the bounds
-            while True:
+        def _get_new_target(cur_target, bounds, drift_amount, static=True):
+            if static:
+                return np.random.uniform(bounds[0], bounds[1])
+            else:
                 # Scale drifting with absolute bound width.
                 bdiff = bounds[1] - bounds[0]
                 scale = drift_amount * bdiff
