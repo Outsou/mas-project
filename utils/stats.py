@@ -1084,6 +1084,42 @@ def create_solo_val_nov_plots(step_vals_novs_solo):
         plt.close()
 
 
+def create_bucket_overlap_plots(targets, aest_bounds, buckets=20):
+    models = sorted(targets.keys(), key=lambda x: MODEL_ORDER.index(x))
+    aests = list(targets[models[0]].keys())
+    for aest in aests:
+        b_size = (aest_bounds[aest][1] - aest_bounds[aest][0]) / buckets
+        for model in models:
+            bucket_avgs = [[] for _ in range(100)]
+            asd = 1
+            tgts = targets[model][aest]
+            n = 8
+            run_tgts = [tgts[i:i + n] for i in range(0, len(tgts), n)]
+            for run in run_tgts:
+                step_tgts = list(zip(*run))
+                for j in range(len(step_tgts)):
+                    bckt_counts = [0] * buckets
+                    for tgt in step_tgts[j]:
+                        bucket = int((tgt - aest_bounds[aest][0]) / b_size - 0.000001)
+                        bckt_counts[bucket] += 1
+                    avg = np.sum(bckt_counts) / np.count_nonzero(bckt_counts)
+                    bucket_avgs[j].append(avg)
+            for k in range(len(bucket_avgs)):
+                bucket_avgs[k] = np.mean(bucket_avgs[k])
+
+            style = MODEL_STYLES[model]
+            plt.plot(list(range(100)), bucket_avgs, style['line style'],
+                     dashes=style['dashes'], label=style['label'], color=style['color'])
+        plt.xlabel('step')
+        plt.ylabel('agents in same bucket')
+        plt.legend()
+        fig = plt.gcf()
+        fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
+        plt.tight_layout()
+        plt.savefig('bucket_overlap_{}.png'.format(aest))
+        plt.close()
+
+
 def create_movement_plots(targets, window_size=10):
     def calculate_areas(tgt_list):
         area_list = []
@@ -1239,7 +1275,7 @@ def create_movement_plots_3D(targets, window_size=1, runs=30):
             #fig = plt.gcf()
             #fig.set_size_inches(BASE_FIG_SIZE[0], BASE_FIG_SIZE[1])
             plt.tight_layout()
-            plt.show()
+            # plt.show()
             plt.savefig('area3D_covered_{}_{}.pdf'.format(aest, model))
             plt.close()
 
@@ -1693,6 +1729,9 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     create_movement_plots_2D(targets)
     create_movement_plots_3D(targets, runs=30)
     create_target_dist_plots(targets)
+
+    # Make bucket overlap plots
+    create_bucket_overlap_plots(targets, own_art_stats['tgt_bounds'])
 
     # Make value bar chart
     create_value_bar_charts(tgt_val_solo, tgt_val_collab, own_art_stats['tgt_bounds'])
