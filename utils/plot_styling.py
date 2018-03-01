@@ -5,7 +5,7 @@ import seaborn as sns
 COLORS = sns.color_palette('colorblind')
 
 # Order legends using these
-MODEL_ORDER = ['random', 'lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3', 'state-Q-cur', 'state-Q-C2S', 'state-Q-C2D']
+MODEL_ORDER = ['random', 'lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3', 'state-Q-cur', 'state-Q-C2S', 'state-Q-C2D', 'random_uni', 'hedonic-Q_uni', 'state-Q_uni']
 AEST_ORDER = ['benford', 'entropy', 'global_contrast_factor', 'symm', 'fd_aesthetics', 'complexity']
 AEST_SHORT_LABELS = ['BLW', 'ENT', 'GCF', 'SYM', 'FRD', 'CPX']
 
@@ -29,6 +29,12 @@ MODEL_STYLES = {
          'label': 'Random',
          'color': COLORS[0],
          'dashes': [2, 2],
+         },
+    'random_uni':
+        {'line style': ':',
+         'label': 'Random (unif.)',
+         'color': COLORS[0],
+         'dashes': [2, 2, 1, 1],
          },
     'Q1':
         {'line style': '-',
@@ -60,10 +66,22 @@ MODEL_STYLES = {
          'color': COLORS[2],
          'dashes': [5, 2]
          },
+    'hedonic-Q_uni':
+        {'line style': '--',
+         'label': 'Hedonic-Q (unif.)',
+         'color': COLORS[2],
+         'dashes': [5, 2, 2, 2]
+         },
     'state-Q':
         {'line style': '-',
          'label': 'state-Q',
          'color': COLORS[1],
+         'dashes': []  # Continuous line
+         },
+    'state-Q':
+        {'line style': '-',
+         'label': 'state-Q (unif.)',
+         'color': COLORS[2],
          'dashes': []  # Continuous line
          },
     'state-Q2':
