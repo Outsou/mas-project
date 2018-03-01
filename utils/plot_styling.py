@@ -78,7 +78,7 @@ MODEL_STYLES = {
          'color': COLORS[1],
          'dashes': []  # Continuous line
          },
-    'state-Q':
+    'state-Q_uni':
         {'line style': '-',
          'label': 'state-Q (unif.)',
          'color': COLORS[2],
