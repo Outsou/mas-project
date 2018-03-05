@@ -1226,13 +1226,16 @@ def create_movement_plots_3D(targets, window_size=1, runs=30):
 
     models = sorted(targets.keys(), key=lambda x: MODEL_ORDER.index(x))
     aests = list(targets[models[0]].keys())
+    dist_targets = {}
 
     for aest in aests:
+        dist_targets[aest] = {}
         bins = 20
         bounds = [0.5, 1.8] if aest == 'complexity' else [0.5, 4.5]
         bborders, bmids = get_hg_bins(bounds, bins)
 
         for model in models:
+            dist_targets[aest][model] = []
             hgs = []
             areas = []
             amins = []
@@ -1242,6 +1245,10 @@ def create_movement_plots_3D(targets, window_size=1, runs=30):
                 amins.append(amins)
                 amaxs.append(amaxs)
                 areas.append(alist)
+                dist_targets[aest][model].append(len(set(tgt_list)))
+
+            d_targets = np.mean(dist_targets[aest][model])
+            print("{} {}: {}".format(aest, model, d_targets))
 
             for _ in range(len(areas[0])):
                 hgs.append([0 for _ in range(bins)])
@@ -1278,6 +1285,136 @@ def create_movement_plots_3D(targets, window_size=1, runs=30):
             # plt.show()
             plt.savefig('area3D_covered_{}_{}.pdf'.format(aest, model))
             plt.close()
+
+def create_single_movement_plots_2D(targets, save_folder, window_size=1, runs=30):
+    def calculate_areas(tgt_list):
+        area_list = []
+        mins = []
+        maxs = []
+        for i in range(len(tgt_list) - window_size):
+            tgts = tgt_list[i:i+window_size]
+            area_list.append((min(tgts), max(tgts)))
+            mins.append(min(tgts))
+            maxs.append(max(tgts))
+        return area_list, mins, maxs
+
+    def get_hg_bins(bounds, bins):
+        bin_size = (bounds[1] - bounds[0]) / bins
+        bin_borders = []
+        bmids = []
+        for i in range(bins):
+            start = bounds[0] + i * bin_size
+            bin_borders.append(start)
+            end = start + bin_size
+            bmids.append((start + end) / 2.0)
+        bin_borders.append(bounds[1])
+        return bin_borders, bmids
+
+    def add_to_hg(hg, borders, min_val, max_val):
+        min_bin = 0
+        max_bin = len(borders) - 1
+        while borders[min_bin] < min_val:
+            min_bin += 1
+        min_bin = min_bin - 1
+
+        c_bin = min_bin
+        while borders[c_bin] < max_val:
+            c_bin += 1
+        max_bin = c_bin
+
+        for b in range(min_bin, max_bin):
+            hg[b] += 1
+
+    models = sorted(targets.keys(), key=lambda x: MODEL_ORDER.index(x))
+    aests = list(targets[models[0]].keys())
+
+    sbfig, (stat_ent_ax, stat_frd_ax, dis_ent_ax, dis_frd_ax) = plt.subplots(4, 1, sharex=True, figsize=(5.0, 5.0))
+
+    for aest in aests:
+        bins = 20
+        bounds = [0.5, 1.8] if aest == 'complexity' else [0.5, 4.5]
+        bborders, bmids = get_hg_bins(bounds, bins)
+        aest_short = 'FRD' if aest == 'complexity' else 'ENT'
+
+        for model in models:
+            n = 8
+            all_tgts = targets[model][aest]
+            run_tgts = [all_tgts[i:i + n] for i in range(0, len(all_tgts), n)]
+
+            for run_id, run_lists in enumerate(run_tgts):
+                hgs = []
+                areas = []
+                amins = []
+                amaxs = []
+                for tgt_list in run_lists:
+                    alist, mins, maxs = calculate_areas(tgt_list)
+                    amins.append(amins)
+                    amaxs.append(amaxs)
+                    areas.append(alist)
+
+                for _ in range(len(areas[0])):
+                    hgs.append([0 for _ in range(bins)])
+
+                for i, alist in enumerate(areas):
+                    for j, abounds in enumerate(alist):
+                        add_to_hg(hgs[j], bborders, abounds[0], abounds[1])
+
+                Z = np.array(hgs)
+                Z = Z.T
+                fig, ax = plt.subplots(figsize=(5, 1.5))
+                ax = sns.heatmap(Z, ax=ax, cmap="Greys", linewidths=0.0, xticklabels=False,
+                                 yticklabels=False)
+                ax.invert_yaxis()
+                ax.set_ylabel('{}'.format(aest_short))
+                if run_id == 11 and aest == 'complexity' and model == 'state-Q-C2D':
+                    fax = sns.heatmap(Z, ax=dis_frd_ax, cmap="Greys", linewidths=0.0, xticklabels=False,
+                                 yticklabels=False)
+                    dis_frd_ax.invert_yaxis()
+                    dis_frd_ax.axis('on')
+                    dis_frd_ax.set_ylabel(aest_short)
+                    dis_frd_ax.set_yticks([0, 20])
+                    dis_frd_ax.set_yticklabels(bounds)
+                    dis_frd_ax.set_xticks([0, 100])
+                    dis_frd_ax.set_xticklabels([0, 200])
+                if run_id == 11 and aest == 'entropy' and model == 'state-Q-C2D':
+                    fax = sns.heatmap(Z, ax=dis_ent_ax, cmap="Greys", linewidths=0.0, xticklabels=False,
+                                 yticklabels=False)
+                    dis_ent_ax.invert_yaxis()
+                    dis_ent_ax.axis('on')
+                    dis_ent_ax.set_ylabel(aest_short)
+                    dis_ent_ax.set_yticks([0, 20])
+                    dis_ent_ax.set_yticklabels(bounds)
+                if run_id == 6 and aest == 'complexity' and model == 'state-Q-C2S':
+                    fax = sns.heatmap(Z, ax=stat_frd_ax, cmap="Greys", linewidths=0.0, xticklabels=False,
+                                 yticklabels=False)
+                    stat_frd_ax.invert_yaxis()
+                    stat_frd_ax.axis('on')
+                    stat_frd_ax.set_ylabel(aest_short)
+                    stat_frd_ax.set_yticks([0, 20])
+                    stat_frd_ax.set_yticklabels(bounds)
+                if run_id == 6 and aest == 'entropy' and model == 'state-Q-C2S':
+                    fax = sns.heatmap(Z, ax=stat_ent_ax, cmap="Greys", linewidths=0.0, xticklabels=False,
+                                 yticklabels=False)
+                    stat_ent_ax.invert_yaxis()
+                    stat_ent_ax.axis('on')
+                    stat_ent_ax.set_ylabel(aest_short)
+                    stat_ent_ax.set_yticks([0, 20])
+                    stat_ent_ax.set_yticklabels(bounds)
+                ax.set_xlabel('Timestep')
+                plt.yticks([0, 20], bounds)
+                plt.xticks([0, 100], [0, 200])
+                plt.tight_layout()
+                fig_name = 'heatmap_{}_r{:0>4}_{}.pdf'.format(model, run_id + 1, aest)
+                fig_path = os.path.join(save_folder, fig_name)
+                plt.savefig(fig_path)
+                plt.close()
+
+    dis_frd_ax.set_xlabel('Timestep')
+    sbfig.tight_layout()
+    fig_name = 'joint_heatmap.pdf'
+    fig_path = os.path.join(save_folder, fig_name)
+    plt.savefig(fig_path)
+    plt.close()
 
 
 def create_target_dist_plots(targets):
@@ -1523,7 +1660,11 @@ def smooth_success_ratios(success_ratios, window=2):
 def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     """The main function to call when analyzing runs."""
     # random needs to be last
-    LIST_ORDER = ['lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3', 'state-Q-cur', 'state-Q-C2S', 'state-Q-C2D', 'random', 'hedonic-Q_uni', 'state-Q_uni', 'random_uni']
+    LIST_ORDER = ['lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3',
+                  'state-Q-cur', 'state-Q-C2S', 'state-Q-C2D', 'random', 'hedonic-Q_uni',
+                  'state-Q_uni', 'state-Q_uni_ad', 'random_uni']
+    exclude = ['lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3',
+                  'state-Q-cur', 'random']
     sns.set()
     sns.set_style("white")
     sns.set_context("paper")
@@ -1728,6 +1869,10 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     create_movement_plots(targets)
     create_movement_plots_2D(targets)
     create_movement_plots_3D(targets, runs=30)
+
+    #if not os.path.exists('run_heatmaps'):
+    #    os.mkdir('run_heatmaps')
+    #create_single_movement_plots_2D(targets, 'run_heatmaps')
     create_target_dist_plots(targets)
 
     # Make bucket overlap plots

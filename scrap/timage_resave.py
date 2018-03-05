@@ -41,7 +41,7 @@ def resave(fname, cm_name='viridis', shape=(1000,1000)):
 
 
 if __name__ == "__main__":
-    folder = "/Users/pihatonttu/uni/collab17/gallery"
+    folder = "/Users/pihatonttu/git/mas_learning_f17/experiments/collab/examples"
     resave_folder(folder, cm_name=None)
     #fname = "/Users/pihatonttu/uni/own_publications/evoMUSART18/gallery/f_art00058tcp_localhost_5561_1_benford_v0.68_n0.5-tcp_localhost_5563_2_benford.txt"
     #resave(fname, cm_name=None)
