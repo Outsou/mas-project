@@ -1467,7 +1467,8 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                 for i in range(self.q_bins):
                     mapper = self.q_state_mappers[i]
                     val = mapper(fr['feat_val'])
-                    self.learner.update_q(val, artifact.creator, i)
+                    eval = (1.0 - self.novelty_weight) * val + self.novelty_weight * fr['novelty']
+                    self.learner.update_q(eval, artifact.creator, i)
 
             # if self.collab_model == 'gaussian':
             #     self.learner.update_gaussian(fr['value'], artifact.creator)
