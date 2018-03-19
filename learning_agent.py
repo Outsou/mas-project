@@ -36,9 +36,9 @@ class LearningAgent(CreativeAgent):
         e, fr = self.evaluate(artifact)
         if self.num_of_bins == 1 or self.goal_attribute is None:
             old_value = self.q_vals[0][artifact.creator]
-            self.q_vals[bin][artifact.creator] += self.learning_rate * (e - old_value)
+            self.q_vals[0][artifact.creator] += self.learning_rate * (e - old_value)
         else:
-            for i in range(len(self.bin_mappers)):
+            for i in range(len(self.bin_mids)):
                 old_value = self.q_vals[i][artifact.creator]
                 #TODO: eval
                 eval = 0
