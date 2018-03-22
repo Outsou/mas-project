@@ -3,57 +3,10 @@ import time
 import math
 
 from creamas.rules.feature import Feature
-from creamas.rules.mapper import Mapper
 from scipy.stats import norm
 from scipy import misc
 import numpy as np
 import cv2
-
-
-class SquareRootDiffMapper(Mapper):
-    """Maps feature values by their rooted distance to target given at initialization time.
-
-    The actual computed value is :math:`1 - \sqrt(|t - v|/d)`, where t is target, v is value and
-    d is hi - lo.
-    """
-    def __init__(self, lo, target, hi):
-        """
-        :param lo: Absolute lowest value for the mapper
-        :param target: Target value for the mapper (in [lo, hi])
-        :param hi: Absolute highest value for the mapper (must be larger than lo)
-        """
-        super().__init__()
-        self._lo = lo
-        self._hi = hi
-        self._mid = target
-        self._bdiff = hi - lo
-
-    def map(self, value):
-        tdiff = 1 - math.sqrt(abs(self._mid - value) / self._bdiff)
-        return tdiff if tdiff >= 0.0 else 0.0
-
-
-class LinearDiffMapper(Mapper):
-    """Maps feature values by their linear distance to target given at initialization time.
-
-    The actual computed value is :math:`1 - |t - v|/d`, where t is target, v is value and
-    d is hi - lo.
-    """
-    def __init__(self, lo, target, hi):
-        """
-        :param lo: Absolute lowest value for the mapper
-        :param target: Target value for the mapper (in [lo, hi])
-        :param hi: Absolute highest value for the mapper (must be larger than lo)
-        """
-        super().__init__()
-        self._lo = lo
-        self._hi = hi
-        self._mid = target
-        self._bdiff = hi - lo
-
-    def map(self, value):
-        tdiff = 1 - (abs(self._mid - value) / self._bdiff)
-        return tdiff if tdiff >= 0.0 else 0.0
 
 
 def fractal_dimension(image):
@@ -205,7 +158,6 @@ class ImageEntropyFeature(Feature):
         super().__init__('image_entropy', ['image'], float)
         self._normalize = normalize
 
-
     def extract(self, artifact):
         img = artifact.obj
         # Convert color image to black and white
@@ -227,10 +179,12 @@ class ImageEntropyFeature(Feature):
 class ImageComplexityFeature(Feature):
     """Feature that estimates the fractal dimension of an image.
 
+    Complexity is computed from the grey scale image.
+
     The color values must be in range [0, 255] and type ``int``.
     """
     MIN = 0.0
-    # This is very loose upperbound, probably closer to 2.3
+    # This is very loose upperbound, probably closer to 1.8-1.9
     MAX = 3.0
 
     def __init__(self):
@@ -270,8 +224,9 @@ class ImageSymmetryFeature(Feature):
 
     :param axis:
         :attr:`ImageSymmetryFeature.HORIZONTAL`,
-        :attr:`ImageSymmetryFeature.VERTICAL`, and/or
-        :attr:`ImageSymmetryFeature.DIAGONAL`.
+        :attr:`ImageSymmetryFeature.VERTICAL`,
+        :attr:`ImageSymmetryFeature.DIAGONAL`,
+        :attr:`ImageSymmetryFeature.ALL_AXES`
 
         These can be combined, e.g. ``axis=ImageSymmetryFeature.HORIZONTAL+
         ImageSymmetryFeature.VERTICAL``.
@@ -283,6 +238,7 @@ class ImageSymmetryFeature(Feature):
     HORIZONTAL = 1
     VERTICAL = 2
     DIAGONAL = 4
+    ALL_AXES = 7
 
     def __init__(self, axis, use_entropy=True):
         super().__init__('image_symmetry', ['image'], float)
@@ -407,7 +363,6 @@ class ImageBellCurveFeature(Feature):
         hg = np.histogram(r, bins, weights=r)[0]
         dhg = hg / np.sum(hg)
         dfn = float(self._dfn(dhg, bins, mean, std))
-        print("DFN: {}, mean: {}, std: {}".format(dfn, mean, std))
         return dfn / 100
 
 
@@ -484,11 +439,8 @@ class ImageGlobalContrastFactorFeature(Feature):
         scales = [e for e in self.sps if e < img.shape[0] and e < img.shape[1]]
         # TODO: use smaller scales as intermediate steps to compute larger.
         contrasts = [self.contrast(pl_img, scale) for scale in scales]
-        #print(contrasts)
         wc = [self.m_func(i/len(scales)) * c for i, c in enumerate(contrasts)]
-        #print(wc)
         gcf = np.sum(wc)
-        #print(gcf)
         return float(gcf) / 10.0
 
 

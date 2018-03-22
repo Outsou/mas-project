@@ -242,7 +242,6 @@ def create_sample_pset(bw=True, sample_size=8):
     pset.addPrimitive(m.safe_mod, [float, float], float)
 
     # Constants
-    #pset.addEphemeralConstant('pink', sample_pink, float)
     pset.addTerminal(1.6180, float)  # Golden ratio
     pset.addTerminal(np.pi, float)
     pset.addEphemeralConstant('Rand', Rand.func, float)

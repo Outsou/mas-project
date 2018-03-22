@@ -1,4 +1,4 @@
-"""Primitives for the :class:`GPImageGenerator`.
+"""Basic primitives for the :class:`GPImageGenerator`.
 
 """
 import math
