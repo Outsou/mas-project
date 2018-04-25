@@ -17,7 +17,6 @@ import aiomas
 from creamas import Simulation, Artifact
 from creamas.util import create_tasks, run
 from creamas.rules import RuleLeaf
-from creamas.mappers import DoubleLinearMapper
 
 from environments import StatEnvironment
 
@@ -25,7 +24,9 @@ from agents import GPImageAgent, agent_name_parse
 from artifacts import GeneticImageArtifact as GIA
 from experiments.collab.ranking import choose_best
 from learners import MultiLearner
-from features import ImageEntropyFeature, ImageComplexityFeature, LinearDiffMapper
+from features import ImageEntropyFeature, ImageComplexityFeature
+from mappers import LinearDiffMapper
+
 
 __all__ = ['CollaborationBaseAgent',
            'GPCollaborationAgent',
@@ -1079,54 +1080,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
         self._log(logging.DEBUG, "{:<10} Memory HG:{}".format(self.aesthetic.upper(), hgram[0]))
         return hgram[0]
 
-    def get_new_curious_target(self, width=4, choose_from=3):
-        """Chooses new target using curiosity (based on the memory and state-Q values).
-
-        :param int width:
-            How many adjacent states (bins) are considered as suitable targets. Actual number
-            of considered states is at most width * 2 + 1.
-
-        :param int choose_from:
-            How many choosable states are left from suitable targets after filtering the suitable
-            target states using the histogram of memory artifacts.
-
-        :returns:
-            New target for the agent.
-        """
-        def get_current_bin():
-            for i, b in enumerate(self.bin_borders):
-                if self.aesthetic_target < b:
-                    return i - 1
-            return i - 1
-
-        b = get_current_bin()
-        hg = self.get_memory_histogram()
-        lo_bin = b - width if b - width > 0 else 0
-        hi_bin = b + width + 1 if b + width + 1 < self.q_bins else self.q_bins
-        # Suitable states (bin numbers)
-        states = list(range(lo_bin, hi_bin))
-        # Suitable states' histogram bins
-        filtered_hg = hg[lo_bin:hi_bin]
-        # Zip and sort the states using histogram values (from lowest to highest)
-        states_hg = sorted(list(zip(states, filtered_hg)), key=lambda x: x[1])
-        #print(states_hg)
-        # Get 'choose_from' best states from the sorted list
-        filtered_states = [e[0] for e in states_hg[:choose_from]]
-        #print(filtered_states)
-        # Get best state (bin number) from the filtered states using Q-values
-        new_target_bin = self.learner.get_best_top_n_state(filtered_states, 4)
-        #print(new_target_bin, self.bin_borders[new_target_bin], self.bin_borders[new_target_bin + 1])
-        # Randomize a target within the bounds of the chosen bin.
-        b_lo = self.bin_borders[new_target_bin]
-        b_hi = self.bin_borders[new_target_bin + 1]
-        new_target = np.random.uniform(b_lo, b_hi)
-        self._number_of_target_changes += 1
-        self._log(logging.DEBUG, "{:<10} new curious target: {:.3f} -> {:.3f} (Changes: {})"
-                  .format(self.aesthetic.upper(), self.aesthetic_target, new_target,
-                          self._number_of_target_changes))
-        return new_target
-
-    def get_new_curious_target2(self, remove_n_largest=4, scale_distance=False):
+    def get_new_curious_target(self, remove_n_largest=4, scale_distance=False):
         """Chooses new target using curiosity (based on the memory and state-Q values).
 
         :param int remove_n_largest:
@@ -1186,8 +1140,6 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                   .format(self.aesthetic.upper(), current_bin, self.aesthetic_target,
                           new_target_bin, new_target, self._number_of_target_changes))
         return new_target
-
-
 
     @aiomas.expose
     def get_adjusted_aesthetic_target(self):
@@ -1293,6 +1245,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                       .format(self.aesthetic_target,
                               self._drift_aest_target,
                               len(self._drift_aest_list)))
+
         if self._drift_novelty_list is not None and self.novelty_target is not None:
             self.novelty_target = self._drift_novelty_list.pop(0)
             if self.novelty_noise > 0.0:
@@ -1404,7 +1357,7 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
                 self.change_targets()
                 self.last_target_change = self.age
         elif self.accumulated_curiosity > self.curious_threshold:
-            self.aesthetic_target = self.get_new_curious_target2(scale_distance=self.curious_use_distance_scale)
+            self.aesthetic_target = self.get_new_curious_target(scale_distance=self.curious_use_distance_scale)
             # Curiosity is erased when the target is changed.
             self.accumulated_curiosity = 0.0
             self.last_target_change = self.age
@@ -1565,14 +1518,11 @@ class DriftingGPCollaborationAgent(GPCollaborationAgent):
 
             if self.curious_behavior in ['personal', 'social']:
                 self.accumulate_curiosity(fr['feat_val'], own_artifact=True)
-            #self.add_artifact(artifact)
 
             # Artifact is acceptable if it passes value and novelty thresholds.
             # It is questionable if we need these, however.
             passed = fr['pass_value'] and fr['pass_novelty']
             if passed:
-                #self._log(logging.DEBUG,
-                #          "Individual artifact passed thresholds")
                 self.learn(artifact)
 
             # Save artifact to save folder
@@ -1677,7 +1627,7 @@ class CollabEnvironment(StatEnvironment):
         if not collab_step:
             return
 
-        self._log(logging.DEBUG,
+        self._log(logging.INFO,
                   "Matching collaboration partners for step {}.".format(age))
 
         pref_lists = {}
@@ -1698,8 +1648,8 @@ class CollabEnvironment(StatEnvironment):
                 continue
             addr = self.find_collab_partner(pref_lists[agent], in_collab)
             if addr is None:
-                print("HÄLÄRM!!! {} did not find a collaboration partner!!"
-                      .format(agent))
+                self._log(logging.ERROR,
+                          "Could not find collaboration partner for {}.".format(agent))
             else:
                 self._log(logging.DEBUG, "Choosing {} to collab with {}.".format(agent, addr))
                 in_collab.append(agent)
@@ -1707,16 +1657,17 @@ class CollabEnvironment(StatEnvironment):
                 matches.append((agent, addr))
 
         self.pref_lists['pairings'].append(matches)
-        #pprint.pprint(self.pref_lists)
+
         if collab_step:
             for a1, a2 in matches:
                 run(slave_task2(a1, a2, cinit=True))
                 run(slave_task2(a2, a1, cinit=False))
                 self._log(logging.INFO,
-                        "{} initializes collab with {}".format(a1, a2))
+                          "{} initializes collab with {}".format(a1, a2))
 
         if len(matches) != int(len(addrs) / 2):
-            print("HÄLÄRMRMRMRMRMR length of matches is not the same as the number of pairs.")
+            self._log(logging.ERROR,
+                      "Length of matches is not the same as the number of pairs!")
 
     def clear_collabs(self, *args, **kwargs):
         async def slave_task(addr):
@@ -1837,7 +1788,6 @@ class CollabEnvironment(StatEnvironment):
                     t = asyncio.ensure_future(slave_task3(addr, r[1], d))
                     eval_tasks.append(t)
         ret = run(asyncio.gather(*eval_tasks))
-        # print(eval_dict)
         return
 
     def save_artifact_info(self):

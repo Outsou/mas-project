@@ -297,7 +297,8 @@ class ImageSymmetryFeature(Feature):
                                  img[cx:, :cy], img[cx:, cy:])
             n += 1
         if self.liveliness:
-            ie = ImageEntropyFeature()
+            #ie = ImageEntropyFeature()
+            ie = ImageEntropyFeature(normalize=True)
             liv = ie(artifact)
 
         return float(liv * (symms / n))

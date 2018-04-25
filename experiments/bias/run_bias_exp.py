@@ -1,0 +1,148 @@
+"""Command line script to run collaboration tests.
+"""
+import logging
+import pprint
+import random
+import copy
+import socket
+import argparse
+from argparse import RawTextHelpFormatter
+import os
+import traceback
+
+import aiomas
+import numpy as np
+from creamas import Simulation
+
+from agents import GPImageAgent
+from experiments.bias import bias_exp as boe
+from experiments.bias.base import BiasSimulation
+import time
+
+
+HOST = socket.gethostname()
+
+
+def get_run_id(path):
+    path = path if len(path) > 0 else "."
+    d = os.listdir(path)
+    run_id = 1
+    for e in d:
+        if os.path.isdir(os.path.join(path, e)):
+            run_id += 1
+    return run_id
+
+
+def run_sim(params, save_path, log_folder):
+    nslaves = 8
+    num_of_steps = params['num_of_steps']
+    pop_size = params['population_size']
+    shape = params['shape']
+    sample_size = params['pset_sample_size']
+
+    with open(os.path.join(save_path, 'rinfo.txt'), 'w') as f:
+        f.write("HOST: {}\n\n".format(HOST))
+        f.write("PARAMS:\n")
+        f.write(pprint.pformat(params))
+        f.write("\n\n")
+
+    menv = boe.create_environment(num_of_slaves=nslaves, save_folder=save_path)
+    r = boe.create_agents('experiments.bias.base:BiasGPAgent',
+                          menv, params, log_folder, save_path, pop_size, shape,
+                          sample_size)
+    # Small world graph connections
+    boe.create_agent_connections(menv, params['agents'])
+
+    sim = BiasSimulation(menv,
+                         callback=menv.post_cbk,
+                         log_folder=log_folder)
+
+    try:
+        # RUN SIMULATION
+        step_times = []
+        for i in range(num_of_steps):
+            step_start = time.monotonic()
+            sim.async_step()
+            step_time = time.monotonic() - step_start
+            step_times.append(step_time)
+            mean_step_time = np.mean(step_times)
+            run_end_time = time.ctime(time.time() +
+                                      (mean_step_time * (num_of_steps - (i + 1))))
+            print('Step {}/{} finished in {:.3f} seconds. Estimated end time at: {}'
+                  .format((i + 1), num_of_steps, step_time, run_end_time))
+            with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
+                f.write('({}) {}: Step {}/{}, estimated end time {}.\n'
+                        .format(HOST, time.ctime(time.time()), i + 1, num_of_steps,
+                                run_end_time))
+        rets = menv.save_artifact_info()
+        sim.end()
+        with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
+            f.write('({}) Run finished at {}\n'
+                    .format(HOST, time.ctime(time.time())))
+    except:
+        sim.end()
+        # Something bad happened during the run!
+        with open('BIAS_RUN_ERRORS.txt', 'a') as f:
+            f.write("HOST: {}\n\n\{}".format(HOST, traceback.format_exc()))
+        with open(os.path.join(save_path, 'rinfo.txt'), 'a') as f:
+            f.write("\n\n{}\n".format(traceback.format_exc()))
+            f.write("({}) RUN CRASHED (Step {}/{})"
+                    .format(HOST, i + 1, num_of_steps, time.ctime(time.time())))
+        return False
+    return True
+
+if __name__ == "__main__":
+    # Command line argument parsing
+    desc = "Command line script to run collaboration test runs."
+    parser = argparse.ArgumentParser(description=desc, formatter_class=RawTextHelpFormatter)
+    parser.add_argument('-a', metavar='agents', type=int, dest='agents',
+                        help="Number of agents.", default=160)
+    parser.add_argument('-s', metavar='steps', type=int, dest='steps',
+                        help="Number of simulation steps.", default=200)
+    parser.add_argument('-n', metavar='novelty', type=int, dest='novelty',
+                        help="Novelty weight.", default=0.5)
+    parser.add_argument('-l', metavar='folder', type=str, dest='save_folder',
+                        help="Base folder to save the test run. Actual save "
+                             "folder is created as a subfolder to the base " 
+                             "folder.",
+                        default="runs")
+    parser.add_argument('-r', metavar='run ID', type=int, dest='run_id',
+                        help="Run ID, if needed to set manually.", required=False)
+    parser.add_argument('-d', metavar='number of runs', type=int, dest='n_runs',
+                        help="Number of individual runs to be done", default=1)
+
+    args = parser.parse_args()
+
+    # DEFINE TEST PARAMETERS
+    params = boe.DEFAULT_PARAMS
+    params['agents'] = args.agents
+    params['novelty_weight'] = args.novelty
+    params['num_of_steps'] = args.steps
+    base_path = os.path.join(".", args.save_folder, 'bias')
+    os.makedirs(base_path, exist_ok=True)
+    log_folder = 'foo'
+    number_of_runs = args.n_runs
+    finished_runs = 0
+    try_runs = 0
+    print("{} preparing for {} run(s).".format(HOST, number_of_runs))
+
+    while finished_runs < number_of_runs and try_runs < number_of_runs * 2:
+        try_runs += 1
+        run_id = args.run_id if args.run_id is not None else get_run_id(base_path)
+
+        # CREATE SIMULATION AND RUN
+        run_folder = 'r{:0>4}{}a{}e{}i{}'.format(
+            run_id, 'bias', params['agents'], len(params['aesthetic_list']),
+            params['num_of_steps'])
+        if len(base_path) > 0:
+            run_folder = os.path.join(base_path, run_folder)
+            log_folder = run_folder
+
+        # Error if the run folder exists for some reason. Should not happen if no
+        # additional folders are spawned (or folders
+        os.makedirs(run_folder, exist_ok=False)
+        print("Initializing run with {} agents, {} aesthetic measures, {} steps."
+              .format(args.agents, len(params['aesthetic_list']), args.steps))
+        print("Saving run output to {}".format(run_folder))
+        success = run_sim(params, run_folder, log_folder)
+        finished_runs += success

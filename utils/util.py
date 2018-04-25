@@ -117,16 +117,26 @@ def get_image_rules(img_shape):
     rules['intensity'] = intensity_rule
     fd_aesthetics_rule = RuleLeaf(ImageFDAestheticsFeature(), LinearMapper(0, 1, '01'))
     rules['fd_aesthetics'] = fd_aesthetics_rule
+    fd_aesthetics_rule = RuleLeaf(ImageFDAestheticsFeature(), LinearMapper(0, 1, '01'))
+    rules['FRD'] = fd_aesthetics_rule
     benford_rule = RuleLeaf(ImageBenfordsLawFeature(), LinearMapper(0, 1, '01'))
     rules['benford'] = benford_rule
+    benford_rule = RuleLeaf(ImageBenfordsLawFeature(), LinearMapper(0, 1, '01'))
+    rules['BLW'] = benford_rule
     colorfulness_rule = RuleLeaf(ImageColorfulnessFeature(), LinearMapper(0, 1, '01'))
     rules['colorfulness'] = colorfulness_rule
     entropy_rule = RuleLeaf(ImageEntropyFeature(), LinearMapper(0, 1, '01'))
     rules['entropy'] = entropy_rule
+    entropy_n_rule = RuleLeaf(ImageEntropyFeature(normalize=True), LinearMapper(0, 1, '01'))
+    rules['entropy_n'] = entropy_n_rule
+    entropy_n_rule = RuleLeaf(ImageEntropyFeature(normalize=True), LinearMapper(0, 1, '01'))
+    rules['ENT'] = entropy_n_rule
     bell_curve_rule = RuleLeaf(ImageBellCurveFeature(), LinearMapper(0, 1, '01'))
     rules['bell_curve'] = bell_curve_rule
     gcf_rule = RuleLeaf(ImageGlobalContrastFactorFeature(), LinearMapper(0, 1, '01'))
     rules['global_contrast_factor'] = gcf_rule
+    gcf_rule = RuleLeaf(ImageGlobalContrastFactorFeature(), LinearMapper(0, 1, '01'))
+    rules['GCF'] = gcf_rule
     ic_pc_rule = RuleLeaf(ImageMCFeature(), LinearMapper(0, 10, '01'))
     rules['ic_pc'] = ic_pc_rule
     # horizontal symmetry
@@ -143,6 +153,8 @@ def get_image_rules(img_shape):
     rules['symm'] = symm_rule
     symmne_rule = RuleLeaf(ImageSymmetryFeature(axis=7, use_entropy=False), LinearMapper(0, 1, '01'))
     rules['symm_ne'] = symmne_rule
+    symmne_rule = RuleLeaf(ImageSymmetryFeature(axis=7, use_entropy=False), LinearMapper(0, 1, '01'))
+    rules['SYM'] = symmne_rule
     return rules
 
 
