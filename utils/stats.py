@@ -385,9 +385,8 @@ def collab_success_per_step(collab_eval_keys, collab_steps):
     return successes
 
 
-def get_step_top_values(collab_evals, pref_lists, collab_steps, other_vals=False):
+def get_step_top_values(collab_evals, pref_lists, collab_steps, top_k, other_vals=False):
     """Makes a dictionary where values are listed for each step for collab artifacts in collab_evals."""
-    top_k = [1, 3, 5]
 
     top = {'all': {'eval': [[] for x in range(collab_steps)],
                    'val': [[] for x in range(collab_steps)],
@@ -497,14 +496,11 @@ def calculate_top_dict_means(top_dict):
         res_dict[key] = {}
         for sub_key, val_list in top_dict[key].items():
             res_dict[key][sub_key] = []
-            all = []
             for i in range(len(top_dict[key][sub_key])):
                 if len(top_dict[key][sub_key][i]) == 0:
                     res_dict[key][sub_key].append(None)
                 else:
                     res_dict[key][sub_key].append(np.mean(top_dict[key][sub_key][i]))
-                all += top_dict[key][sub_key][i]
-            res_dict[key][sub_key + '_mean'] = np.mean(all)
     return res_dict
 
 
@@ -523,6 +519,10 @@ def analyze_collab_evals(dirs):
     pickle_name = 'collab_evals.pkl'
     collab_eval_stats = common_society_analysis(dirs, pickle_name)
 
+    # Top k picks for which values are calculated
+    top_k = [1, 3, 5]
+    all_keys = [str(x) for x in top_k] + ['all']
+
     # Get number of collab attempts
     first_dir = os.path.split(dirs[0])[1]
     collab_iters = int(int(re.findall(r'i\d+', first_dir)[0][1:]) / 2)
@@ -538,6 +538,21 @@ def analyze_collab_evals(dirs):
     aesthetic_top_stats = {}
     aesthetic_top_stats_other = {}
     step_successes = np.zeros(collab_iters)
+    run_val_means = {}
+    run_eval_means = {}
+    run_nov_means = {}
+    run_val_means_other = {}
+    run_eval_means_other = {}
+    run_nov_means_other = {}
+
+    for key in all_keys:
+        run_val_means[key] = []
+        run_eval_means[key] = []
+        run_nov_means[key] = []
+        run_val_means_other[key] = []
+        run_eval_means_other[key] = []
+        run_nov_means_other[key] = []
+
     for dir in dirs:
         # Load pickles
         collab_evals_pkl = os.path.join(dir, pickle_name)
@@ -550,8 +565,18 @@ def analyze_collab_evals(dirs):
         step_successes += collab_success_per_step(list(collab_evals.keys()), collab_iters)
 
         # Calculate per step top pick values
-        top_picks, aesthetic_tops = get_step_top_values(collab_evals, pref_lists, collab_iters)
-        top_picks_other, aesthetic_tops_other = get_step_top_values(collab_evals, pref_lists, collab_iters, True)
+        top_picks, aesthetic_tops = get_step_top_values(collab_evals, pref_lists, collab_iters, top_k)
+        top_picks_other, aesthetic_tops_other = get_step_top_values(collab_evals, pref_lists, collab_iters, top_k, True)
+
+        # Calculate run means
+        for key in all_keys:
+            run_eval_means[key].append(np.mean(list(itertools.chain.from_iterable(top_picks[key]['eval']))))
+            run_val_means[key].append(np.mean(list(itertools.chain.from_iterable(top_picks[key]['val']))))
+            run_nov_means[key].append(np.mean(list(itertools.chain.from_iterable(top_picks[key]['nov']))))
+
+            run_eval_means_other[key].append(np.mean(list(itertools.chain.from_iterable(top_picks_other[key]['eval']))))
+            run_val_means_other[key].append(np.mean(list(itertools.chain.from_iterable(top_picks_other[key]['val']))))
+            run_nov_means_other[key].append(np.mean(list(itertools.chain.from_iterable(top_picks_other[key]['nov']))))
 
         top_pick_stats = append_top_dictionaries(top_pick_stats, top_picks)
         aesthetic_top_stats = append_aest_top_dicts(aesthetic_top_stats, aesthetic_tops)
@@ -620,6 +645,43 @@ def analyze_collab_evals(dirs):
     collab_eval_stats['step_successes'] = step_successes / len(dirs)
     collab_eval_stats['num_of_agents'] = agents
 
+    # Calculate means and confidence intervals
+    for key in all_keys:
+        collab_eval_stats['top_pick_stats'][key]['eval_mean'] = np.mean(run_eval_means[key])
+        collab_eval_stats['top_pick_stats'][key]['val_mean'] = np.mean(run_val_means[key])
+        collab_eval_stats['top_pick_stats'][key]['nov_mean'] = np.mean(run_nov_means[key])
+        collab_eval_stats['top_pick_stats_other'][key]['eval_mean'] = np.mean(run_eval_means_other[key])
+        collab_eval_stats['top_pick_stats_other'][key]['val_mean'] = np.mean(run_val_means_other[key])
+        collab_eval_stats['top_pick_stats_other'][key]['nov_mean'] = np.mean(run_nov_means_other[key])
+
+        collab_eval_stats['top_pick_stats'][key]['eval_conf'] = st.t.interval(0.99, len(run_eval_means[key]) - 1,
+                                                                              loc=np.mean(run_eval_means[key]),
+                                                                              scale=st.sem(run_eval_means[key]))
+        collab_eval_stats['top_pick_stats'][key]['val_conf'] = st.t.interval(0.99, len(run_val_means[key]) - 1,
+                                                                             loc=np.mean(run_val_means[key]),
+                                                                             scale=st.sem(run_val_means[key]))
+        collab_eval_stats['top_pick_stats'][key]['nov_conf'] = st.t.interval(0.99, len(run_nov_means[key]) - 1,
+                                                                             loc=np.mean(run_nov_means[key]),
+                                                                             scale=st.sem(run_nov_means[key]))
+        collab_eval_stats['top_pick_stats_other'][key]['eval_conf'] = st.t.interval(
+            0.99,
+            len(run_eval_means_other[key]) - 1,
+            loc=np.mean(run_eval_means_other[key]),
+            scale=st.sem(run_eval_means_other[key])
+        )
+        collab_eval_stats['top_pick_stats_other'][key]['val_conf'] = st.t.interval(
+            0.99,
+            len(run_val_means_other[key]) - 1,
+            loc=np.mean(run_val_means_other[key]),
+            scale=st.sem(run_val_means_other[key])
+        )
+        collab_eval_stats['top_pick_stats_other'][key]['nov_conf'] = st.t.interval(
+            0.99,
+            len(run_nov_means_other[key]) - 1,
+            loc=np.mean(run_nov_means_other[key]),
+            scale=st.sem(run_nov_means_other[key])
+        )
+
     return collab_eval_stats
 
 
@@ -674,17 +736,35 @@ def common_agent_analysis(dirs, pkl_name):
     novs = []
     vals = []
     for dir in dirs:
+        run_evals = []
+        run_novs = []
+        run_vals = []
         sub_dirs = get_dirs_in_dir(dir)
         for sub_dir in sub_dirs:
             pkl = os.path.join(sub_dir, pkl_name)
             pkl_dict = pickle.load(open(pkl, 'rb'))
-            evals += pkl_dict['eval']
-            novs += pkl_dict['nov']
-            vals += pkl_dict['val']
+            run_evals += pkl_dict['eval']
+            run_novs += pkl_dict['nov']
+            run_vals += pkl_dict['val']
+        evals.append(np.mean(run_evals))
+        novs.append(np.mean(run_novs))
+        vals.append(np.mean(run_vals))
 
-    stat_dict['avg_eval'] = sum(evals) / len(evals)
-    stat_dict['avg_nov'] = sum(novs) / len(novs)
-    stat_dict['avg_val'] = sum(vals) / len(vals)
+    stat_dict['eval'] = {}
+    stat_dict['nov'] = {}
+    stat_dict['val'] = {}
+    stat_dict['eval']['mean'] = sum(evals) / len(evals)
+    stat_dict['nov']['mean'] = sum(novs) / len(novs)
+    stat_dict['val']['mean'] = sum(vals) / len(vals)
+    stat_dict['eval']['conf_int'] = st.t.interval(0.99, len(evals) - 1,
+                                                  loc=np.mean(evals),
+                                                  scale=st.sem(evals))
+    stat_dict['nov']['conf_int'] = st.t.interval(0.99, len(novs) - 1,
+                                                 loc=np.mean(novs),
+                                                 scale=st.sem(novs))
+    stat_dict['val']['conf_int'] = st.t.interval(0.99, len(vals) - 1,
+                                                 loc=np.mean(vals),
+                                                 scale=st.sem(vals))
     return stat_dict
 
 
@@ -1663,8 +1743,8 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     LIST_ORDER = ['lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3',
                   'state-Q-cur', 'state-Q-C2S', 'state-Q-C2D', 'random', 'hedonic-Q_uni',
                   'state-Q_uni', 'state-Q_uni_ad', 'random_uni']
-    exclude = ['lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3',
-                  'state-Q-cur', 'random']
+    # exclude = ['lr', 'Q1', 'Q2', 'Q3', 'hedonic-Q', 'state-Q', 'state-Q2', 'state-Q3',
+    #               'state-Q-cur', 'random']
     sns.set()
     sns.set_style("white")
     sns.set_context("paper")
@@ -1679,10 +1759,18 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
             ['Evaluation of own solo artifacts'],
             ['Value of own collab artifacts'],
             ['Initializers value of collab artifacts'],
+            ['Conf int'],
             ['Partners value of collab artifacts'],
+            ['Conf int'],
+            ['Initializers novelty of collab artifacts'],
+            ['Conf int'],
+            ['Partners novelty of collab artifacts'],
+            ['Conf int'],
             ['Value of own solo artifacts'],
+            ['Conf int'],
             ['Novelty of own collab artifacts'],
             ['Novelty of own solo artifacts'],
+            ['Conf int'],
             ['Overall evaluation of collab artifacts'],
             ['Overall evaluation of solo artifacts'],
             ['Overall value of collab artifacts'],
@@ -1724,6 +1812,21 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         conf_int = collab_eval_stats['success_ratio']['conf_int']
         conf_int = (format_s % conf_int[0], format_s % conf_int[1])
 
+        conf_int_solo_val = own_art_stats['val']['conf_int']
+        conf_int_solo_val = (format_s % conf_int_solo_val[0], format_s % conf_int_solo_val[1])
+        conf_int_solo_nov = own_art_stats['nov']['conf_int']
+        conf_int_solo_nov = (format_s % conf_int_solo_nov[0], format_s % conf_int_solo_nov[1])
+
+        conf_int_init_val = collab_eval_stats['top_pick_stats']['all']['val_conf']
+        conf_int_init_val = (format_s % conf_int_init_val[0], format_s % conf_int_init_val[1])
+        conf_int_init_nov = collab_eval_stats['top_pick_stats']['all']['nov_conf']
+        conf_int_init_nov = (format_s % conf_int_init_nov[0], format_s % conf_int_init_nov[1])
+
+        conf_int_part_val = collab_eval_stats['top_pick_stats_other']['all']['val_conf']
+        conf_int_part_val = (format_s % conf_int_part_val[0], format_s % conf_int_part_val[1])
+        conf_int_part_nov = collab_eval_stats['top_pick_stats_other']['all']['nov_conf']
+        conf_int_part_nov = (format_s % conf_int_part_nov[0], format_s % conf_int_part_nov[1])
+
         # Add column to main table
         init_val = collab_eval_stats['top_pick_stats']['all']['val_mean']
         partner_val = collab_eval_stats['top_pick_stats_other']['all']['val_mean']
@@ -1733,13 +1836,21 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         col_vals = [collab_eval_stats['success_ratio']['mean'],
                     (conf_int),
                     collab_eval,
-                    own_art_stats['avg_eval'],
+                    own_art_stats['eval']['mean'],
                     (init_val + partner_val) / 2,
                     init_val,
+                    conf_int_init_val,
                     partner_val,
-                    own_art_stats['avg_val'],
+                    conf_int_part_val,
                     collab_eval_stats['top_pick_stats']['all']['nov_mean'],
-                    own_art_stats['avg_nov'],
+                    conf_int_init_nov,
+                    collab_eval_stats['top_pick_stats_other']['all']['nov_mean'],
+                    conf_int_part_nov,
+                    own_art_stats['val']['mean'],
+                    conf_int_solo_val,
+                    collab_eval_stats['top_pick_stats']['all']['nov_mean'],
+                    own_art_stats['nov']['mean'],
+                    conf_int_solo_nov,
                     collab_eval_stats['avg_eval'],
                     ind_eval_stats['avg_eval'],
                     collab_eval_stats['avg_val'],
