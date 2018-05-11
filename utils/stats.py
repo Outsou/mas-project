@@ -611,8 +611,8 @@ def analyze_collab_evals(dirs):
 
             aesthetic_pair_vals[pair]['count'] += 1
 
-            # Calculate collab success ratio for simulation run
-            collab_ratios.append(len(collab_arts) / collab_attempts)
+        # Calculate collab success ratio for simulation run
+        collab_ratios.append(len(collab_arts) / collab_attempts)
 
 
     collab_eval_stats['success_ratio'] = {'mean': np.mean(collab_ratios),
@@ -778,6 +778,7 @@ def analyze_collab_arts(dirs):
     tgt_val_stats = {}
 
     for dir in dirs:
+        run_initializer_success = {}
         sub_dirs = get_dirs_in_dir(dir)
         for sub_dir in sub_dirs:
             collab_arts_dict = pickle.load(open(os.path.join(sub_dir, pkl_name), 'rb'))
@@ -791,6 +792,8 @@ def analyze_collab_arts(dirs):
                 initializer_stats[aest] = {}
             if aest not in tgt_val_stats:
                 tgt_val_stats[aest] = []
+            if aest not in run_initializer_success:
+                run_initializer_success[aest] = {}
 
             for i in range(len(collab_arts_dict['fb'])):
                 caest = collab_arts_dict['caest'][i]
@@ -837,10 +840,15 @@ def analyze_collab_arts(dirs):
                                                       'cval': [],
                                                       'nov': [],
                                                       'cnov': [],
-                                                      'rank': []}
+                                                      'rank': [],
+                                                      'run_ratios': []}
+                if caest not in run_initializer_success[aest]:
+                    run_initializer_success[aest][caest] = {'succeeded': 0,
+                                                            'total': 0}
                 # If this agent initialized
                 if collab_arts_dict['cinit'][i]:
                     initializer_stats[aest][caest]['total'] += 1
+                    run_initializer_success[aest][caest]['total'] += 1
                     if collab_arts_dict['fb'][i]:
                         idx = sum(collab_arts_dict['fb'][:i + 1]) - 1
                         initializer_stats[aest][caest]['succeeded'] += 1
@@ -851,6 +859,12 @@ def analyze_collab_arts(dirs):
                         initializer_stats[aest][caest]['nov'].append(collab_arts_dict['nov'][idx])
                         initializer_stats[aest][caest]['cnov'].append(collab_arts_dict['cnov'][idx])
                         initializer_stats[aest][caest]['rank'].append(collab_arts_dict['rank'][idx])
+                        run_initializer_success[aest][caest]['succeeded'] += 1
+
+        for aest in run_initializer_success.keys():
+            for caest in run_initializer_success[aest].keys():
+                initializer_stats[aest][caest]['run_ratios'].append(run_initializer_success[aest][caest]['succeeded']
+                                                                    / run_initializer_success[aest][caest]['total'])
 
 
     # Divide aesthetic pair stats by 2, because the same stat is calculated for both agents
@@ -877,6 +891,10 @@ def analyze_collab_arts(dirs):
             initializer_stats[aesthetic][caesthetic]['nov'] = np.mean(vals['nov'])
             initializer_stats[aesthetic][caesthetic]['cnov'] = np.mean(vals['cnov'])
             initializer_stats[aesthetic][caesthetic]['rank'] = np.mean(vals['rank'])
+            ratios = initializer_stats[aesthetic][caesthetic]['run_ratios']
+            initializer_stats[aesthetic][caesthetic]['ratio_CI'] = st.t.interval(0.99, len(ratios) - 1,
+                                                                                 loc=np.mean(ratios),
+                                                                                 scale=st.sem(ratios))
 
     collab_art_stats['aesthetic_pairs'] = aesthetic_pair_stats
     collab_art_stats['aesthetic'] = aesthetic_stats
@@ -1078,8 +1096,8 @@ def print_initializer_aest_stats(collab_art_stats, format_s):
     aesthetics = list(collab_art_stats['init_stats'].keys())
     for aest in sorted(aesthetics):
         for caest in sorted(collab_art_stats['init_stats'][aest].keys()):
-            ratio = collab_art_stats['init_stats'][aest][caest]['succeeded'] \
-                    / collab_art_stats['init_stats'][aest][caest]['total']
+            ratio = np.mean(collab_art_stats['init_stats'][aest][caest]['run_ratios'])
+            ratio_CI = collab_art_stats['init_stats'][aest][caest]['ratio_CI']
             row = [aest,
                    caest,
                    collab_art_stats['init_stats'][aest][caest]['eval'],
@@ -1091,12 +1109,13 @@ def print_initializer_aest_stats(collab_art_stats, format_s):
                    collab_art_stats['init_stats'][aest][caest]['succeeded'],
                    collab_art_stats['init_stats'][aest][caest]['total'],
                    ratio,
+                   max((ratio - ratio_CI[0], ratio_CI[1] - ratio)),
                    collab_art_stats['init_stats'][aest][caest]['rank']]
             aesthetic_rows.append([format_s % val if type(val) in [float, np.float64] else val for val in row])
 
     print(tabulate(aesthetic_rows,
                    headers=['init aesthetic', 'collab aesthetic', 'init eval', 'collab eval', 'init val', 'collab val',
-                            'init nov', 'collab nov', 'success count', 'total count', 'success ratio', 'rank']))
+                            'init nov', 'collab nov', 'success count', 'total count', 'success ratio', 'ratio CI', 'rank']))
 
 
 def create_top_k_val_nov_plot(top_pick_stats, model):
@@ -1171,7 +1190,6 @@ def create_bucket_overlap_plots(targets, aest_bounds, buckets=20):
         b_size = (aest_bounds[aest][1] - aest_bounds[aest][0]) / buckets
         for model in models:
             bucket_avgs = [[] for _ in range(100)]
-            asd = 1
             tgts = targets[model][aest]
             n = 8
             run_tgts = [tgts[i:i + n] for i in range(0, len(tgts), n)]
@@ -1190,6 +1208,7 @@ def create_bucket_overlap_plots(targets, aest_bounds, buckets=20):
             style = MODEL_STYLES[model]
             plt.plot(list(range(100)), bucket_avgs, style['line style'],
                      dashes=style['dashes'], label=style['label'], color=style['color'])
+            print('Overlap {} {}: {}'.format(model, aest, np.mean(bucket_avgs)))
         plt.xlabel('step')
         plt.ylabel('agents in same bucket')
         plt.legend()
@@ -1220,6 +1239,7 @@ def create_movement_plots(targets, window_size=10):
             style = MODEL_STYLES[model]
             plt.plot(list(range(window_size, len(tgt_list))), areas, style['line style'],
                      dashes=style['dashes'], label=style['label'], color=style['color'])
+            print('Area {} {}: {}'.format(model, aest, np.mean(areas)))
         plt.xlabel('step')
         plt.xlabel('area')
         plt.legend()
@@ -1796,6 +1816,7 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
     targets = {}
     tgt_val_solo = {}
     tgt_val_collab = {}
+    init_stats = {}
 
     for model_dir in model_dirs:
         model = os.path.split(model_dir)[1]
@@ -1809,32 +1830,56 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         # Generate aesthetic dependant rows
         make_aesthetic_rows(collab_eval_stats, own_art_stats, aest_rows, aest_first_choice_rows, eval_ratios, format_s)
 
-        conf_int = collab_eval_stats['success_ratio']['conf_int']
-        conf_int = (format_s % conf_int[0], format_s % conf_int[1])
+        # conf_int = collab_eval_stats['success_ratio']['conf_int']
+        # conf_int = (format_s % conf_int[0], format_s % conf_int[1])
+        #
+        # conf_int_solo_val = own_art_stats['val']['conf_int']
+        # conf_int_solo_val = (format_s % conf_int_solo_val[0], format_s % conf_int_solo_val[1])
+        # conf_int_solo_nov = own_art_stats['nov']['conf_int']
+        # conf_int_solo_nov = (format_s % conf_int_solo_nov[0], format_s % conf_int_solo_nov[1])
+        #
+        # conf_int_init_val = collab_eval_stats['top_pick_stats']['all']['val_conf']
+        # conf_int_init_val = (format_s % conf_int_init_val[0], format_s % conf_int_init_val[1])
+        # conf_int_init_nov = collab_eval_stats['top_pick_stats']['all']['nov_conf']
+        # conf_int_init_nov = (format_s % conf_int_init_nov[0], format_s % conf_int_init_nov[1])
+        #
+        # conf_int_part_val = collab_eval_stats['top_pick_stats_other']['all']['val_conf']
+        # conf_int_part_val = (format_s % conf_int_part_val[0], format_s % conf_int_part_val[1])
+        # conf_int_part_nov = collab_eval_stats['top_pick_stats_other']['all']['nov_conf']
+        # conf_int_part_nov = (format_s % conf_int_part_nov[0], format_s % conf_int_part_nov[1])
 
-        conf_int_solo_val = own_art_stats['val']['conf_int']
-        conf_int_solo_val = (format_s % conf_int_solo_val[0], format_s % conf_int_solo_val[1])
-        conf_int_solo_nov = own_art_stats['nov']['conf_int']
-        conf_int_solo_nov = (format_s % conf_int_solo_nov[0], format_s % conf_int_solo_nov[1])
-
-        conf_int_init_val = collab_eval_stats['top_pick_stats']['all']['val_conf']
-        conf_int_init_val = (format_s % conf_int_init_val[0], format_s % conf_int_init_val[1])
-        conf_int_init_nov = collab_eval_stats['top_pick_stats']['all']['nov_conf']
-        conf_int_init_nov = (format_s % conf_int_init_nov[0], format_s % conf_int_init_nov[1])
-
-        conf_int_part_val = collab_eval_stats['top_pick_stats_other']['all']['val_conf']
-        conf_int_part_val = (format_s % conf_int_part_val[0], format_s % conf_int_part_val[1])
-        conf_int_part_nov = collab_eval_stats['top_pick_stats_other']['all']['nov_conf']
-        conf_int_part_nov = (format_s % conf_int_part_nov[0], format_s % conf_int_part_nov[1])
-
-        # Add column to main table
+        solo_val = own_art_stats['val']['mean']
+        sr_mean = collab_eval_stats['success_ratio']['mean']
         init_val = collab_eval_stats['top_pick_stats']['all']['val_mean']
         partner_val = collab_eval_stats['top_pick_stats_other']['all']['val_mean']
         collab_eval = (collab_eval_stats['top_pick_stats']['all']['eval_mean'] +
                        collab_eval_stats['top_pick_stats_other']['all']['eval_mean']) / 2
+        solo_nov = own_art_stats['nov']['mean']
+        init_nov = collab_eval_stats['top_pick_stats']['all']['nov_mean']
+        partner_nov = collab_eval_stats['top_pick_stats_other']['all']['nov_mean']
 
-        col_vals = [collab_eval_stats['success_ratio']['mean'],
-                    (conf_int),
+        conf_int = collab_eval_stats['success_ratio']['conf_int']
+        conf_int = max(sr_mean - conf_int[0], conf_int[1] - sr_mean)
+
+        conf_int_solo_val = own_art_stats['val']['conf_int']
+        conf_int_solo_val = max(solo_val - conf_int_solo_val[0], conf_int_solo_val[1] - solo_val)
+        conf_int_solo_nov = own_art_stats['nov']['conf_int']
+        conf_int_solo_nov = max(solo_nov - conf_int_solo_nov[0], conf_int_solo_nov[1] - solo_nov)
+
+        conf_int_init_val = collab_eval_stats['top_pick_stats']['all']['val_conf']
+        conf_int_init_val = max(init_val - conf_int_init_val[0], conf_int_init_val[1] - init_val)
+        conf_int_init_nov = collab_eval_stats['top_pick_stats']['all']['nov_conf']
+        conf_int_init_nov = max(init_nov - conf_int_init_nov[0], conf_int_init_nov[1] - init_nov)
+
+        conf_int_part_val = collab_eval_stats['top_pick_stats_other']['all']['val_conf']
+        conf_int_part_val = max(partner_val - conf_int_part_val[0], conf_int_part_val[1] - partner_val)
+        conf_int_part_nov = collab_eval_stats['top_pick_stats_other']['all']['nov_conf']
+        conf_int_part_nov = max(partner_nov - conf_int_part_nov[0], conf_int_part_nov[1] - partner_nov)
+
+
+        # Add column to main table
+        col_vals = [sr_mean,
+                    conf_int,
                     collab_eval,
                     own_art_stats['eval']['mean'],
                     (init_val + partner_val) / 2,
@@ -1842,14 +1887,14 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
                     conf_int_init_val,
                     partner_val,
                     conf_int_part_val,
-                    collab_eval_stats['top_pick_stats']['all']['nov_mean'],
+                    init_nov,
                     conf_int_init_nov,
-                    collab_eval_stats['top_pick_stats_other']['all']['nov_mean'],
+                    partner_nov,
                     conf_int_part_nov,
-                    own_art_stats['val']['mean'],
+                    solo_val,
                     conf_int_solo_val,
                     collab_eval_stats['top_pick_stats']['all']['nov_mean'],
-                    own_art_stats['nov']['mean'],
+                    solo_nov,
                     conf_int_solo_nov,
                     collab_eval_stats['avg_eval'],
                     ind_eval_stats['avg_eval'],
@@ -1922,6 +1967,7 @@ def analyze_collab_gp_runs(path, decimals=3, exclude=None):
         targets[model] = own_art_stats['tgts']
         tgt_val_solo[model] = own_art_stats['tgt_val']
         tgt_val_collab[model] = collab_art_stats['tgt_val']
+        init_stats[model] = collab_art_stats['init_stats']
 
 
     # make_pair_count_bar_graph_all(pair_counts)
